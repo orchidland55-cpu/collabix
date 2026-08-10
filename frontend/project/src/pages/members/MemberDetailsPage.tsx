@@ -2,48 +2,112 @@ import { useState } from 'react';
 import {
   ArrowLeft,
   Mail,
-  Phone,
-  MapPin,
   Calendar,
   Briefcase,
   Users,
   CheckCircle2,
   Clock,
-  TrendingUp,
   MoreHorizontal,
   Edit2,
-  UserX,
   Share2,
+  UserX,
+  AlertCircle,
 } from 'lucide-react';
-import { Card, CardBody, CardHeader, CardTitle, CardDescription } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge, type Tone } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
 import { IconButton } from '../../components/ui/IconButton';
-import { Progress } from '../../components/ui/Progress';
+import { Modal } from '../../components/ui/Modal';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { Tabs, type TabItem } from '../../components/ui/Tabs';
-import { Timeline, type TimelineItem } from '../../components/ui/Timeline';
-import { BarChart } from '../../components/ui/Charts';
 import { Dropdown, type DropdownItem } from '../../components/ui/Dropdown';
 import { cn } from '../../lib/cn';
 import { useToast } from '../../components/ui/Toast';
-import type { MemberProfile } from './members-types';
-import { membersList } from './members-data';
+import { useUserDetail, useActivateUser, useDeactivateUser, useDeleteUser } from '../../services/admin-hooks';
+import type { UserResponse } from '../../types';
+import { UserStatus } from '../../types';
 
 interface MemberDetailsPageProps {
   memberId: string;
   onBack: () => void;
 }
 
+const statusTone: Record<string, Tone> = {
+  ACTIVE: 'success',
+  INACTIVE: 'warning',
+  PENDING_ACTIVATION: 'info',
+  SUSPENDED: 'danger',
+  LOCKED: 'danger',
+  ARCHIVED: 'warning',
+  SOFT_DELETED: 'danger',
+};
+
+function formatStatus(status: string): string {
+  return status
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function formatTitleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 export function MemberDetailsPage({ memberId, onBack }: MemberDetailsPageProps) {
   const { toast } = useToast();
-  const member = membersList.find((m) => m.id === memberId) || membersList[0];
+  const { data: user, isLoading, isError } = useUserDetail(memberId);
+  const activateUser = useActivateUser();
+  const deactivateUser = useDeactivateUser();
+  const deleteUser = useDeleteUser();
   const [activeTab, setActiveTab] = useState('overview');
+  const [confirmAction, setConfirmAction] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex items-start gap-4">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-12 w-12 rounded-full" />
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (isError || !user) {
+    return (
+      <div className="flex flex-col gap-6">
+        <button
+          onClick={onBack}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border-subtle text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <EmptyState
+          icon={<AlertCircle className="h-6 w-6" />}
+          title="Member not found"
+          description="This member could not be loaded. They may have been removed or you may not have access."
+        />
+      </div>
+    );
+  }
+
+  const memberName = `${user.firstName} ${user.lastName}`.trim();
+  const isActive = user.status === UserStatus.ACTIVE;
 
   const tabItems: TabItem[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'projects', label: 'Projects', count: member.currentProjects },
-    { id: 'tasks', label: 'Tasks', count: member.currentTasks },
+    { id: 'projects', label: 'Projects', count: 0 },
+    { id: 'tasks', label: 'Tasks', count: 0 },
     { id: 'documents', label: 'Documents', count: 0 },
     { id: 'activity', label: 'Activity' },
     { id: 'performance', label: 'Performance' },
@@ -53,21 +117,34 @@ export function MemberDetailsPage({ memberId, onBack }: MemberDetailsPageProps) 
     { label: 'Edit Profile', icon: <Edit2 className="h-4 w-4" />, onClick: () => toast({ title: 'Coming soon', tone: 'info' }) },
     { label: 'Share Profile', icon: <Share2 className="h-4 w-4" />, onClick: () => toast({ title: 'Coming soon', tone: 'info' }) },
     { divider: true },
-    { label: 'Deactivate Member', icon: <UserX className="h-4 w-4" />, danger: true, onClick: () => toast({ title: 'Coming soon', tone: 'info' }) },
+    {
+      label: isActive ? 'Deactivate Member' : 'Reactivate Member',
+      icon: <UserX className="h-4 w-4" />,
+      danger: isActive,
+      onClick: () => setConfirmAction(isActive ? 'deactivate' : 'activate'),
+    },
+    { label: 'Remove Member', icon: <UserX className="h-4 w-4" />, danger: true, onClick: () => setConfirmAction('delete') },
   ];
 
-  const statusColor: Record<typeof member.status, string> = {
-    active: 'success',
-    away: 'warning',
-    offline: 'neutral',
-    inactive: 'danger',
-  };
-
-  const availabilityColor: Record<typeof member.availability, string> = {
-    available: 'success',
-    busy: 'danger',
-    away: 'warning',
-    offline: 'neutral',
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    try {
+      if (confirmAction === 'delete') {
+        await deleteUser.mutateAsync(user.id);
+        toast({ title: 'Member removed', tone: 'success' });
+      } else if (confirmAction === 'deactivate') {
+        await deactivateUser.mutateAsync(user.id);
+        toast({ title: 'Member deactivated', tone: 'success' });
+      } else {
+        await activateUser.mutateAsync(user.id);
+        toast({ title: 'Member activated', tone: 'success' });
+      }
+      onBack();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Action failed';
+      toast({ title: msg, tone: 'danger' });
+    }
+    setConfirmAction(null);
   };
 
   return (
@@ -84,17 +161,14 @@ export function MemberDetailsPage({ memberId, onBack }: MemberDetailsPageProps) 
 
           <div className="flex flex-col gap-3">
             <div className="flex items-end gap-4">
-              <Avatar name={member.name} size="lg" tone={member.tone} />
+              <Avatar name={memberName} size="lg" src={user.profilePicture} />
               <div>
-                <h1 className="text-page font-semibold text-text-primary">{member.name}</h1>
-                <p className="text-body text-text-secondary">{member.jobTitle}</p>
+                <h1 className="text-page font-semibold text-text-primary">{memberName}</h1>
+                <p className="text-body text-text-secondary">{user.email}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <Badge tone="accent" variant="soft">{member.department}</Badge>
-                  <Badge tone={statusColor[member.status] as Tone} variant="soft" dot>
-                    {member.status}
-                  </Badge>
-                  <Badge tone={availabilityColor[member.availability] as Tone} variant="soft" dot>
-                    {member.availability}
+                  <Badge tone="accent" variant="soft">{user.departmentName ?? 'No Department'}</Badge>
+                  <Badge tone={statusTone[user.status] ?? 'neutral'} variant="soft" dot>
+                    {formatStatus(user.status)}
                   </Badge>
                 </div>
               </div>
@@ -110,22 +184,46 @@ export function MemberDetailsPage({ memberId, onBack }: MemberDetailsPageProps) 
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard icon={<Briefcase />} label="Department" value={member.department} tone="accent" />
-        <StatCard icon={<Users />} label="Team" value={member.team} tone="info" />
-        <StatCard icon={<CheckCircle2 />} label="Tasks" value={`${member.currentTasks} / ${member.completedTasks}`} tone="success" />
-        <StatCard icon={<TrendingUp />} label="Completion Rate" value={`${member.taskCompletionRate}%`} tone="success" />
+        <StatCard icon={<Briefcase />} label="Department" value={user.departmentName ?? 'Not Assigned'} tone="accent" />
+        <StatCard icon={<Users />} label="Team" value={user.teamName ?? 'Not Assigned'} tone="info" />
+        <StatCard icon={<CheckCircle2 />} label="Role" value={formatTitleCase(user.role)} tone="info" />
+        <StatCard icon={<Calendar />} label="Member Since" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'} tone="success" />
       </div>
 
       {/* Tabs */}
       <Tabs items={tabItems} active={activeTab} onChange={setActiveTab} />
 
       {/* Tab Content */}
-      {activeTab === 'overview' && <OverviewTab member={member} />}
-      {activeTab === 'projects' && <ProjectsTab member={member} />}
-      {activeTab === 'tasks' && <TasksTab member={member} />}
-      {activeTab === 'documents' && <DocumentsTab member={member} />}
-      {activeTab === 'activity' && <ActivityTab member={member} />}
-      {activeTab === 'performance' && <PerformanceTab member={member} />}
+      {activeTab === 'overview' && <OverviewTab user={user} />}
+      {activeTab === 'projects' && (
+        <NotAvailableTab title="No projects yet" description="Assigned projects will appear here when this member is added to a project." />
+      )}
+      {activeTab === 'tasks' && (
+        <NotAvailableTab title="No tasks yet" description="Assigned tasks will appear here once tasks are linked to this member." />
+      )}
+      {activeTab === 'documents' && (
+        <NotAvailableTab title="No documents" description="Documents shared with this member will appear here when available." />
+      )}
+      {activeTab === 'activity' && (
+        <NotAvailableTab title="No recent activity" description="Activity events for this member will appear here when available." />
+      )}
+      {activeTab === 'performance' && (
+        <NotAvailableTab title="No performance data" description="Performance metrics will appear here when tracking is enabled for this member." />
+      )}
+
+      {confirmAction && (
+        <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} title="Confirm Action" size="sm">
+          <p className="text-body text-text-secondary">
+            Are you sure you want to {confirmAction === 'delete' ? 'remove this member' : confirmAction === 'deactivate' ? 'deactivate this member' : 'activate this member'}?
+          </p>
+          <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-border-subtle">
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
+            <Button variant={confirmAction === 'delete' ? 'danger' : 'primary'} onClick={handleConfirmAction}>
+              Confirm
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -159,102 +257,48 @@ function StatCard({
   );
 }
 
-function OverviewTab({ member }: { member: MemberProfile }) {
+function OverviewTab({ user }: { user: UserResponse }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2 flex flex-col gap-6">
-        {/* Personal Information */}
+        {/* Contact information */}
         <Card>
           <CardHeader>
-            <CardTitle>Personal Information</CardTitle>
+            <CardTitle>Contact Information</CardTitle>
           </CardHeader>
           <CardBody className="space-y-4">
-            <InfoRow label="Email" value={member.email} icon={<Mail />} />
-            {member.phone && <InfoRow label="Phone" value={member.phone} icon={<Phone />} />}
-            {member.location && <InfoRow label="Location" value={member.location} icon={<MapPin />} />}
-            {member.timezone && <InfoRow label="Timezone" value={member.timezone} icon={<Clock />} />}
+            <InfoRow label="Email" value={user.email} icon={<Mail />} />
           </CardBody>
         </Card>
 
-        {/* Professional Information */}
+        {/* Professional information */}
         <Card>
           <CardHeader>
             <CardTitle>Professional Information</CardTitle>
           </CardHeader>
           <CardBody className="space-y-4">
-            <InfoRow label="Job Title" value={member.jobTitle} />
-            <InfoRow label="Department" value={member.department} />
-            <InfoRow label="Team" value={member.team} />
-            <InfoRow label="Role" value={member.role.charAt(0).toUpperCase() + member.role.slice(1)} />
-            <InfoRow label="Employment Type" value={member.employmentType.replace('-', ' ')} />
-            {member.reportsTo && <InfoRow label="Reports To" value={member.reportsTo} />}
-            <InfoRow label="Joined" value={member.joinedDate} icon={<Calendar />} />
+            <InfoRow label="Department" value={user.departmentName ?? 'Not Assigned'} />
+            <InfoRow label="Team" value={user.teamName ?? 'Not Assigned'} />
+            <InfoRow label="Role" value={formatTitleCase(user.role)} />
+            <InfoRow label="Member Type" value={formatTitleCase(user.memberType)} />
+            <InfoRow label="Joined" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'} icon={<Calendar />} />
           </CardBody>
         </Card>
-
-        {/* Skills */}
-        {member.skills.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Skills</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <div className="flex flex-wrap gap-2">
-                {member.skills.map((skill) => (
-                  <Badge key={skill} tone="accent" variant="soft">
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-            </CardBody>
-          </Card>
-        )}
-
-        {/* Bio */}
-        {member.bio && (
-          <Card>
-            <CardHeader>
-              <CardTitle>About</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <p className="text-body text-text-secondary leading-relaxed">{member.bio}</p>
-            </CardBody>
-          </Card>
-        )}
       </div>
 
       {/* Sidebar */}
       <div className="flex flex-col gap-6">
-        {/* Workload */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-section">Workload</CardTitle>
-          </CardHeader>
-          <CardBody className="flex flex-col gap-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-caption font-medium text-text-tertiary">Current</span>
-                <span className="text-body font-semibold text-text-primary">{member.workload}%</span>
-              </div>
-              <Progress value={member.workload} size="md" />
-            </div>
-            <div className="text-caption text-text-tertiary">
-              Average: <span className="font-semibold text-text-primary">{member.averageWorkload}%</span>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Quick Stats */}
+        {/* Statistics */}
         <Card>
           <CardHeader>
             <CardTitle className="text-section">Statistics</CardTitle>
           </CardHeader>
           <CardBody className="space-y-3">
-            <StatItem label="Active Projects" value={member.currentProjects} />
-            <StatItem label="Current Tasks" value={member.currentTasks} />
-            <StatItem label="Completed Tasks" value={member.completedTasks} />
-            <StatItem label="Completion Rate" value={`${member.taskCompletionRate}%`} />
-            {member.directReports > 0 && <StatItem label="Direct Reports" value={member.directReports} />}
+            <StatItem label="Role" value={formatTitleCase(user.role)} />
+            <StatItem label="Member Type" value={formatTitleCase(user.memberType)} />
+            <StatItem label="Status" value={formatStatus(user.status)} />
+            <StatItem label="Last Login" value={user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Never'} />
+            <StatItem label="Created" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'} />
           </CardBody>
         </Card>
 
@@ -266,19 +310,15 @@ function OverviewTab({ member }: { member: MemberProfile }) {
           <CardBody className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-caption text-text-secondary">Current Status</span>
-              <Badge tone={member.status === 'active' ? 'success' : 'neutral'} variant="soft" dot>
-                {member.status}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-caption text-text-secondary">Availability</span>
-              <Badge tone={member.availability === 'available' ? 'success' : 'neutral'} variant="soft" dot>
-                {member.availability}
+              <Badge tone={statusTone[user.status] ?? 'neutral'} variant="soft" dot>
+                {formatStatus(user.status)}
               </Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-caption text-text-secondary">Last Active</span>
-              <span className="text-caption font-medium text-text-tertiary">{member.lastActive}</span>
+              <span className="text-caption font-medium text-text-tertiary">
+                {user.lastLoginAt ? <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {new Date(user.lastLoginAt).toLocaleDateString()}</span> : 'Never'}
+              </span>
             </div>
           </CardBody>
         </Card>
@@ -299,7 +339,7 @@ function InfoRow({ label, value, icon }: { label: string; value: string; icon?: 
   );
 }
 
-function StatItem({ label, value }: { label: string; value: string | number }) {
+function StatItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-caption text-text-secondary">{label}</span>
@@ -308,165 +348,10 @@ function StatItem({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function ProjectsTab({ member }: { member: MemberProfile }) {
+function NotAvailableTab({ title, description }: { title: string; description: string }) {
   return (
-    <div className="py-6">
-      <div className="rounded-lg border border-border-subtle bg-surface p-6 text-center">
-        <p className="text-body text-text-secondary mb-2">
-          Member is currently assigned to {member.currentProjects} project{member.currentProjects !== 1 ? 's' : ''}.
-        </p>
-        <p className="text-caption text-text-tertiary">Projects tab will display assigned projects when implemented.</p>
-      </div>
-    </div>
-  );
-}
-
-function TasksTab({ member }: { member: MemberProfile }) {
-  return (
-    <div className="py-6">
-      <div className="rounded-lg border border-border-subtle bg-surface p-6 text-center">
-        <p className="text-body text-text-secondary mb-2">
-          Member has {member.currentTasks} active task{member.currentTasks !== 1 ? 's' : ''} out of {member.completedTasks} total completed.
-        </p>
-        <p className="text-caption text-text-tertiary">Tasks tab will display task details when implemented.</p>
-      </div>
-    </div>
-  );
-}
-
-function DocumentsTab({ member }: { member: MemberProfile }) {
-  return (
-    <div className="py-6">
-      <div className="rounded-lg border border-border-subtle bg-surface p-6 text-center">
-        <p className="text-body text-text-secondary">No documents found for this member.</p>
-        <p className="text-caption text-text-tertiary mt-1">Documents tab will display shared documents when implemented.</p>
-      </div>
-    </div>
-  );
-}
-
-function ActivityTab({ member }: { member: MemberProfile }) {
-  const activities: TimelineItem[] = [
-    {
-      id: '1',
-      icon: <CheckCircle2 />,
-      tone: 'success',
-      title: 'Completed task "Implement OAuth2 flow"',
-      timestamp: '2h ago',
-    },
-    {
-      id: '2',
-      icon: <Briefcase />,
-      tone: 'info',
-      title: 'Assigned to project "API Gateway v2"',
-      timestamp: '5h ago',
-    },
-    {
-      id: '3',
-      icon: <Users />,
-      tone: 'accent',
-      title: 'Joined Backend Team',
-      timestamp: '1d ago',
-    },
-    {
-      id: '4',
-      icon: <TrendingUp />,
-      tone: 'success',
-      title: 'Workload increased to 75%',
-      timestamp: '2d ago',
-    },
-  ];
-
-  return (
-    <div className="py-6">
-      <Card>
-        <CardBody>
-          <Timeline items={activities} />
-        </CardBody>
-      </Card>
-    </div>
-  );
-}
-
-function PerformanceTab({ member }: { member: MemberProfile }) {
-  const chartData = [
-    { label: 'Week 1', value: 8 },
-    { label: 'Week 2', value: 12 },
-    { label: 'Week 3', value: 10 },
-    { label: 'Week 4', value: 15 },
-  ];
-
-  return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Performance Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tasks Completed This Month</CardTitle>
-          <CardDescription>Breakdown by week</CardDescription>
-        </CardHeader>
-        <CardBody>
-          <BarChart data={chartData} height={250} tone="accent" />
-        </CardBody>
-      </Card>
-
-      {/* Performance Metrics */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Performance Metrics</CardTitle>
-        </CardHeader>
-        <CardBody className="space-y-4">
-          <MetricRow label="Completion Rate" value={`${member.taskCompletionRate}%`} />
-          <MetricRow label="Avg Workload" value={`${member.averageWorkload}%`} />
-          <MetricRow label="On-Time Tasks" value="92%" />
-          <MetricRow label="Quality Score" value="8.5/10" />
-        </CardBody>
-      </Card>
-
-      {/* Productivity Trend */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Workload Trend</CardTitle>
-          <CardDescription>Last 4 weeks</CardDescription>
-        </CardHeader>
-        <CardBody>
-          <BarChart data={[
-            { label: 'W1', value: 60 },
-            { label: 'W2', value: 70 },
-            { label: 'W3', value: 75 },
-            { label: 'W4', value: 75 },
-          ]} height={250} tone="warning" />
-        </CardBody>
-      </Card>
-
-      {/* Achievements */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Achievements</CardTitle>
-        </CardHeader>
-        <CardBody className="space-y-2">
-          <AchievementBadge label="Perfect Week" icon="🏆" />
-          <AchievementBadge label="Team Player" icon="⭐" />
-          <AchievementBadge label="On Time" icon="✅" />
-        </CardBody>
-      </Card>
-    </div>
-  );
-}
-
-function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between pb-3 border-b border-border-subtle last:pb-0 last:border-b-0">
-      <span className="text-caption text-text-secondary">{label}</span>
-      <span className="text-body font-semibold text-text-primary">{value}</span>
-    </div>
-  );
-}
-
-function AchievementBadge({ label, icon }: { label: string; icon: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface p-2">
-      <span className="text-lg">{icon}</span>
-      <span className="text-caption font-medium text-text-primary">{label}</span>
+    <div className="py-10">
+      <EmptyState icon={<Clock className="h-6 w-6" />} title={title} description={description} />
     </div>
   );
 }

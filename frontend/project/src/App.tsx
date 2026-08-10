@@ -89,6 +89,7 @@ const HistoryPage = lazy(() => import('./pages/ai/HistoryPage').then((m) => ({ d
 const AnalyticsAIPage = lazy(() => import('./pages/ai/AnalyticsAIPage').then((m) => ({ default: m.AnalyticsAIPage })));
 const HandoverAIPage = lazy(() => import('./pages/ai/HandoverAIPage').then((m) => ({ default: m.HandoverAIPage })));
 const HandoverJournalPage = lazy(() => import('./pages/knowledge/components/HandoverJournalPage').then((m) => ({ default: m.HandoverJournalPage })));
+const HandoverEntriesPage = lazy(() => import('./pages/handover/HandoverEntriesPage').then((m) => ({ default: m.HandoverEntriesPage })));
 const KnowledgeAIPage = lazy(() => import('./pages/ai/KnowledgeAIPage').then((m) => ({ default: m.KnowledgeAIPage })));
 const ReportAIPage = lazy(() => import('./pages/ai/ReportAIPage').then((m) => ({ default: m.ReportAIPage })));
 const ConversationLayout = lazy(() => import('./components/ai/conversation').then((m) => ({ default: m.ConversationLayout })));
@@ -160,6 +161,7 @@ const routeMeta: Record<string, RouteMeta> = {
   'document-detail': { title: 'Document Detail', icon: FileText, parent: 'documents' },
   knowledge: { title: 'Knowledge Base', icon: BookOpen },
   handover: { title: 'Handover Journal', icon: ScrollText },
+  'handover-entries': { title: 'Handover Entries', icon: ScrollText },
   notifications: { title: 'Notifications', icon: Bell },
   reports: { title: 'Reports', icon: BarChart3 },
   organization: { title: 'Organization', icon: Building2 },
@@ -562,6 +564,7 @@ function AppRoutes() {
         <Route path="documents/:documentId" element={<Suspense fallback={<PageLoader />}><DocumentDetailPage /></Suspense>} />
         <Route path="knowledge" element={<Suspense fallback={<PageLoader />}><KnowledgeBasePage /></Suspense>} />
         <Route path="handover" element={<Suspense fallback={<PageLoader />}><HandoverJournalPage /></Suspense>} />
+        <Route path="handover-entries" element={<Suspense fallback={<PageLoader />}><HandoverEntriesPage /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense>} />
         <Route path="reports" element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
         <Route path="organization" element={<AdminOnly><Suspense fallback={<PageLoader />}><OrganizationPage /></Suspense></AdminOnly>} />

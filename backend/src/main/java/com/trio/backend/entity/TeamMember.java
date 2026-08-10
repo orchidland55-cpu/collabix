@@ -6,6 +6,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
+import java.time.Instant;
+
 /**
  * TeamMember is the association between a Team and a User through membership.
  *
@@ -56,11 +58,25 @@ public class TeamMember {
     @Column(name = "status", nullable = false, length = 20)
     private WorkspaceMemberStatus status;
 
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
     @PrePersist
     private void prePersist() {
         if (status == null) {
             status = WorkspaceMemberStatus.ACTIVE;
         }
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
+    @PreUpdate
+    private void preUpdate() {
+        updatedAt = Instant.now();
     }
 }
 

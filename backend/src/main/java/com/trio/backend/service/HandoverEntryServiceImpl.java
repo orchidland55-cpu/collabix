@@ -21,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -46,11 +47,22 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         UUID userId = support.currentUserId();
         support.assertActiveWorkspaceMember(workspaceId, userId);
 
+        // Admin/owner roles are read-only for handover entries: only managers and members submit daily reports.
+        if (support.isWorkspaceAdminOrOwner(workspaceId, userId)) {
+            throw new ForbiddenException("Admins cannot create handover entries. Only managers and members can submit daily reports.");
+        }
+        if (!support.currentUserDepartmentId().equals(request.getDepartmentId())) {
+            throw new ForbiddenException("You can only create handover entries in your own department.");
+        }
+
         Project project = validateProject(workspaceId, request.getDepartmentId(), request.getProjectId());
 
-        User receiver = userRepository.findById(request.getReceiverId())
-                .orElseThrow(() -> new ResourceNotFoundException("Receiver not found."));
-        support.assertUserIsActiveMember(workspaceId, receiver.getId(), "Receiver is not an active member of this workspace.");
+        User receiver = null;
+        if (request.getReceiverId() != null) {
+            receiver = userRepository.findById(request.getReceiverId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Receiver not found."));
+            support.assertUserIsActiveMember(workspaceId, receiver.getId(), "Receiver is not an active member of this workspace.");
+        }
 
         User sender = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
@@ -81,8 +93,12 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
     @Override
     @Transactional(readOnly = true)
     public HandoverEntryResponse getById(UUID workspaceId, UUID handoverEntryId) {
-        support.assertActiveWorkspaceMember(workspaceId, support.currentUserId());
-        return handoverEntryMapper.toResponse(findEntry(workspaceId, handoverEntryId));
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        HandoverEntry entry = findEntry(workspaceId, handoverEntryId);
+        assertCanViewEntry(entry, workspaceId, userId);
+        return handoverEntryMapper.toResponse(entry);
     }
 
     @Override
@@ -94,8 +110,22 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
             UUID projectId,
             Pageable pageable
     ) {
-        support.assertActiveWorkspaceMember(workspaceId, support.currentUserId());
-        return handoverEntryRepository.search(workspaceId, status, priority, projectId, pageable)
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        if (support.isWorkspaceAdminOrOwner(workspaceId, userId)) {
+            return handoverEntryRepository.search(workspaceId, status, priority, projectId, pageable)
+                    .map(handoverEntryMapper::toResponse);
+        }
+
+        if (support.isWorkspaceManager(workspaceId, userId)) {
+            UUID myDepartmentId = support.currentUserDepartmentId();
+            return handoverEntryRepository.searchByDepartment(workspaceId, myDepartmentId, status, priority, projectId, pageable)
+                    .map(handoverEntryMapper::toResponse);
+        }
+
+        // Members only see their own entries (sent by them).
+        return handoverEntryRepository.findMine(workspaceId, userId, status, null, null, null, pageable)
                 .map(handoverEntryMapper::toResponse);
     }
 
@@ -114,6 +144,22 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         UUID userId = support.currentUserId();
         support.assertActiveWorkspaceMember(workspaceId, userId);
         return handoverEntryRepository.findSentPaginated(workspaceId, userId, pageable)
+                .map(handoverEntryMapper::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<HandoverEntryResponse> myEntries(
+            UUID workspaceId,
+            HandoverStatus status,
+            HandoverEntry.Shift shift,
+            LocalDate entryDate,
+            String search,
+            Pageable pageable
+    ) {
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+        return handoverEntryRepository.findMine(workspaceId, userId, status, shift, entryDate, search, pageable)
                 .map(handoverEntryMapper::toResponse);
     }
 
@@ -164,6 +210,9 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         if (entry.getStatus() != HandoverStatus.DRAFT && entry.getStatus() != HandoverStatus.REJECTED) {
             throw new BadRequestException("Only DRAFT or REJECTED handovers can be sent.");
         }
+        if (entry.getReceiver() == null) {
+            throw new BadRequestException("A receiver is required to send this handover. Use Submit for a daily report instead.");
+        }
 
         entry.setStatus(HandoverStatus.PENDING);
         entry.setSentAt(LocalDateTime.now());
@@ -172,6 +221,28 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         support.addTimelineEvent(saved, TimelineEventType.SENT, "Handover sent to " + support.userDisplayName(saved.getReceiver()), userId);
         support.notifyUser(workspaceId, saved.getReceiver().getId(), Notification.NotificationType.HANDOVER_SENT,
                 "New handover: " + saved.getTitle(), saved.getTitle(), saved.getId());
+
+        return handoverEntryMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public HandoverEntryResponse submit(UUID workspaceId, UUID handoverEntryId, HandoverStatusUpdateRequest request) {
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        HandoverEntry entry = findEntry(workspaceId, handoverEntryId);
+        assertSender(entry, userId);
+        if (entry.getStatus() != HandoverStatus.DRAFT && entry.getStatus() != HandoverStatus.REJECTED) {
+            throw new BadRequestException("Only DRAFT or REJECTED entries can be submitted.");
+        }
+
+        entry.setStatus(HandoverStatus.SUBMITTED);
+        entry.setSubmittedAt(LocalDateTime.now());
+        HandoverEntry saved = handoverEntryRepository.save(entry);
+
+        support.addTimelineEvent(saved, TimelineEventType.SUBMITTED, "Handover entry submitted for journal generation by "
+                + support.userDisplayName(saved.getSender()), userId);
 
         return handoverEntryMapper.toResponse(saved);
     }
@@ -233,7 +304,8 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         support.assertActiveWorkspaceMember(workspaceId, userId);
 
         HandoverEntry entry = findEntry(workspaceId, handoverEntryId);
-        boolean participant = entry.getSender().getId().equals(userId) || entry.getReceiver().getId().equals(userId);
+        boolean participant = entry.getSender().getId().equals(userId)
+                || (entry.getReceiver() != null && entry.getReceiver().getId().equals(userId));
         if (!participant) {
             throw new ForbiddenException("Only the sender or receiver can complete this handover.");
         }
@@ -260,7 +332,8 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
         support.assertActiveWorkspaceMember(workspaceId, userId);
 
         HandoverEntry entry = findEntry(workspaceId, handoverEntryId);
-        boolean participant = entry.getSender().getId().equals(userId) || entry.getReceiver().getId().equals(userId);
+        boolean participant = entry.getSender().getId().equals(userId)
+                || (entry.getReceiver() != null && entry.getReceiver().getId().equals(userId));
         boolean isAdmin = support.isWorkspaceAdminOrOwner(workspaceId, userId);
         if (!participant && !isAdmin) {
             throw new ForbiddenException("You do not have permission to archive this handover.");
@@ -304,6 +377,26 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Handover not found."));
     }
 
+    /**
+     * Read guard for a single handover entry:
+     * sender, receiver, workspace admin/owner, or a manager of the entry's department may view it.
+     */
+    private void assertCanViewEntry(HandoverEntry entry, UUID workspaceId, UUID userId) {
+        boolean isSender = entry.getSender().getId().equals(userId);
+        boolean isReceiver = entry.getReceiver() != null && entry.getReceiver().getId().equals(userId);
+        if (isSender || isReceiver) {
+            return;
+        }
+        if (support.isWorkspaceAdminOrOwner(workspaceId, userId)) {
+            return;
+        }
+        if (support.isWorkspaceManager(workspaceId, userId)
+                && support.currentUserDepartmentId().equals(entry.getDepartment().getId())) {
+            return;
+        }
+        throw new ForbiddenException("You do not have permission to view this handover.");
+    }
+
     private Project validateProject(UUID workspaceId, UUID departmentId, UUID projectId) {
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
@@ -323,6 +416,9 @@ public class HandoverEntryServiceImpl implements HandoverEntryService {
     }
 
     private void assertReceiver(HandoverEntry entry, UUID userId) {
+        if (entry.getReceiver() == null) {
+            throw new BadRequestException("This handover has no receiver.");
+        }
         if (!entry.getReceiver().getId().equals(userId)) {
             throw new ForbiddenException("Only the receiver can perform this action.");
         }

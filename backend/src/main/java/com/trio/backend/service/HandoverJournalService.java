@@ -1,9 +1,11 @@
 package com.trio.backend.service;
 
 import com.trio.backend.dto.organisation.handover.HandoverJournalResponse;
+import com.trio.backend.entity.HandoverEntry;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -65,4 +67,27 @@ public interface HandoverJournalService {
             UUID projectId,
             UUID handoverJournalId
     );
+
+    /**
+     * Department-scoped, filterable journal listing for all roles.
+     * <p>Access rules:</p>
+     * <ul>
+     *     <li>Workspace ADMIN/OWNER may list journals of any department (or all when {@code departmentId} is null).</li>
+     *     <li>Managers and Members are automatically scoped to their own primary department; requesting another
+     *         department results in a 403.</li>
+     * </ul>
+     */
+    Page<HandoverJournalResponse> listAccessible(
+            UUID workspaceId,
+            UUID departmentId,
+            UUID projectId,
+            HandoverEntry.Shift shift,
+            LocalDate date,
+            Pageable pageable
+    );
+
+    /**
+     * Resolves a single journal after enforcing department-scoped read access.
+     */
+    HandoverJournalResponse getByIdAccessible(UUID workspaceId, UUID handoverJournalId);
 }

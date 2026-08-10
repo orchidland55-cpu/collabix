@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 /**
  * Create request of a Team.
  */
@@ -18,5 +20,10 @@ public class CreateTeamRequest {
 
     @Size(max = 500)
     private String description;
+
+    /**
+     * ID of the user manager of the team (optional).
+     */
+    private UUID managerId;
 }
 

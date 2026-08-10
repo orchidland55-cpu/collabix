@@ -2,7 +2,7 @@
 export { MembersPage } from './members/MembersPage';
 export { MemberDetailsPage } from './members/MemberDetailsPage';
 export type { MemberProfile, MemberFilters } from './members/members-types';
-export { membersList } from './members/members-data';
+export { mapUserToMemberProfile } from './members/members-utils';
 
 // Projects Module
 export { ProjectsPage } from './projects/ProjectsPage';

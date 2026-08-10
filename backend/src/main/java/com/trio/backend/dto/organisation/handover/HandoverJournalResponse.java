@@ -1,5 +1,6 @@
 package com.trio.backend.dto.organisation.handover;
 
+import com.trio.backend.entity.HandoverEntry;
 import com.trio.backend.entity.HandoverJournal;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,6 +25,16 @@ public class HandoverJournalResponse {
     private UUID projectId;
 
     private LocalDateTime journalDate;
+
+    private HandoverEntry.Shift shift;
+
+    private Integer journalVersion;
+
+    private String generatedBy;
+
+    private String departmentsIncluded;
+
+    private Long entriesCount;
 
     private String generatedSummary;
 

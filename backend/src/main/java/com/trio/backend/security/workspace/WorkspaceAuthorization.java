@@ -5,6 +5,7 @@ import com.trio.backend.enums.WorkspaceMemberStatus;
 import com.trio.backend.enums.WorkspaceRole;
 import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.repository.TeamMemberRepository;
+import com.trio.backend.repository.TeamRepository;
 import com.trio.backend.repository.UserRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.security.user.CustomUserDetails;
@@ -35,6 +36,7 @@ public class WorkspaceAuthorization {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final ProjectRepository projectRepository;
+    private final TeamRepository teamRepository;
     private final UserRepository userRepository;
 
     // ============================================================================
@@ -243,6 +245,32 @@ public boolean canAccessDepartment(UUID workspaceId, UUID departmentId, Authenti
         // For MVP, team member management is governed by workspace ADMIN/OWNER.
         // targetUserId is intentionally not used yet (no fine-grained team member permissions exist in the codebase).
         return canUpdateWorkspace(workspaceId, authentication);
+    }
+
+    /**
+     * Checks whether the authenticated user may permanently delete a team.
+     *
+     * <p>Allowed for a Super Admin (bypass), a Workspace Admin/Owner, or the
+     * manager of this specific team. All other users are denied so the backend
+     * always returns 403 for unauthorized direct API requests.</p>
+     */
+    public boolean canPermanentlyDeleteTeam(UUID workspaceId, UUID teamId, Authentication authentication) {
+        if (isSuperAdmin(authentication)) {
+            return true;
+        }
+
+        if (canUpdateWorkspace(workspaceId, authentication)) {
+            return true;
+        }
+
+        UUID userId = extractUserId(authentication);
+        if (userId == null) {
+            return false;
+        }
+
+        return teamRepository.findByIdAndWorkspace_Id(teamId, workspaceId)
+                .map(team -> team.getManager() != null && team.getManager().getId().equals(userId))
+                .orElse(false);
     }
 
     public boolean canCreateArtifact(UUID workspaceId, UUID departmentId, UUID teamId, Authentication authentication) {

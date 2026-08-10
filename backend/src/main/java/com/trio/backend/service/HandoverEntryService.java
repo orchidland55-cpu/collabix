@@ -8,13 +8,15 @@ import com.trio.backend.entity.HandoverEntry;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
  * Service for the HandoverEntry workflow.
  *
  * <p>Lifecycle: DRAFT -&gt; PENDING (send) -&gt; ACCEPTED | REJECTED -&gt; COMPLETED.
- * ARCHIVED and delete are soft lifecycle operations.</p>
+ * ARCHIVED and delete are soft lifecycle operations. Daily reports use
+ * DRAFT -&gt; SUBMITTED (ready for AI journal generation).</p>
  */
 public interface HandoverEntryService {
 
@@ -34,9 +36,20 @@ public interface HandoverEntryService {
 
     Page<HandoverEntryResponse> sent(UUID workspaceId, Pageable pageable);
 
+    Page<HandoverEntryResponse> myEntries(
+            UUID workspaceId,
+            HandoverEntry.HandoverStatus status,
+            HandoverEntry.Shift shift,
+            LocalDate entryDate,
+            String search,
+            Pageable pageable
+    );
+
     HandoverEntryResponse update(UUID workspaceId, UUID handoverEntryId, UpdateHandoverEntryRequest request);
 
     HandoverEntryResponse send(UUID workspaceId, UUID handoverEntryId, HandoverStatusUpdateRequest request);
+
+    HandoverEntryResponse submit(UUID workspaceId, UUID handoverEntryId, HandoverStatusUpdateRequest request);
 
     HandoverEntryResponse accept(UUID workspaceId, UUID handoverEntryId, HandoverStatusUpdateRequest request);
 

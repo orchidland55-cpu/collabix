@@ -2,12 +2,12 @@ package com.trio.backend.entity;
 
 import com.trio.backend.entity.base.AuditableEntity;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
@@ -19,8 +19,10 @@ import java.util.UUID;
  * <ul>
  *     <li>HandoverEntry belongs to exactly one Workspace and exactly one Department and exactly one Project.</li>
  *     <li>Task is optional and can be associated for task-level handover context.</li>
- *     <li>The author is the {@code sender}; the {@code receiver} is the person the handover is handed to.</li>
- *     <li>Lifecycle: DRAFT -&gt; PENDING (sent) -&gt; ACCEPTED | REJECTED -&gt; COMPLETED; ARCHIVED for soft archiving.</li>
+ *     <li>An entry can be a <b>daily report</b> (filled by the {@code sender} with tasks completed, progress,
+ *     pending tasks, blockers etc.) or a classic sender-&gt;receiver handover.</li>
+ *     <li>Lifecycle: DRAFT -&gt; PENDING (sent) -&gt; ACCEPTED | REJECTED -&gt; COMPLETED; ARCHIVED for soft archiving.
+ *     Daily reports additionally use SUBMITTED (ready for journal generation).</li>
  *     <li>Soft-delete is handled via the {@code deleted} flag.</li>
  * </ul>
  */
@@ -38,6 +40,8 @@ import java.util.UUID;
                 @Index(name = "idx_handover_entries_priority", columnList = "priority"),
                 @Index(name = "idx_handover_entries_due_date", columnList = "due_date"),
                 @Index(name = "idx_handover_entries_sent_at", columnList = "sent_at"),
+                @Index(name = "idx_handover_entries_shift", columnList = "shift"),
+                @Index(name = "idx_handover_entries_entry_date", columnList = "entry_date"),
                 @Index(name = "idx_handover_entries_deleted", columnList = "deleted"),
                 @Index(name = "idx_handover_entries_created_at", columnList = "created_at")
         }
@@ -90,24 +94,22 @@ public class HandoverEntry extends AuditableEntity {
     private User sender;
 
     /**
-     * Receiver (person the handover is handed to). Required.
+     * Receiver (person the handover is handed to).
+     * Optional: for daily-report entries there is no explicit receiver.
      */
-    @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "receiver_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "receiver_id", nullable = true)
     private User receiver;
 
     // =========================================================================
     // Workflow fields
     // =========================================================================
 
-    @NotBlank(message = "Title is required")
     @Size(max = 255, message = "Title must not exceed 255 characters")
-    @Column(name = "title", nullable = false, length = 255)
+    @Column(name = "title", length = 255)
     private String title;
 
-    @NotBlank(message = "Content is required")
-    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
     @NotNull(message = "Priority is required")
@@ -124,6 +126,44 @@ public class HandoverEntry extends AuditableEntity {
     private LocalDateTime dueDate;
 
     // =========================================================================
+    // Daily report fields
+    // =========================================================================
+
+    /**
+     * Shift the report covers (MORNING / EVENING). Optional for classic handovers.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "shift", length = 20)
+    private Shift shift;
+
+    /**
+     * The date this daily report covers (defaults to today for new entries).
+     */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
+    @Column(name = "completed_tasks", columnDefinition = "TEXT")
+    private String completedTasks;
+
+    @Column(name = "current_progress", columnDefinition = "TEXT")
+    private String currentProgress;
+
+    @Column(name = "pending_tasks", columnDefinition = "TEXT")
+    private String pendingTasks;
+
+    @Column(name = "blockers", columnDefinition = "TEXT")
+    private String blockers;
+
+    @Column(name = "important_notes", columnDefinition = "TEXT")
+    private String importantNotes;
+
+    @Column(name = "estimated_remaining_work", length = 255)
+    private String estimatedRemainingWork;
+
+    @Column(name = "mood", length = 50)
+    private String mood;
+
+    // =========================================================================
     // Lifecycle timestamps
     // =========================================================================
 
@@ -138,6 +178,9 @@ public class HandoverEntry extends AuditableEntity {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "submitted_at")
+    private LocalDateTime submittedAt;
 
     @Column(name = "archived_at")
     private LocalDateTime archivedAt;
@@ -161,19 +204,21 @@ public class HandoverEntry extends AuditableEntity {
         if (deleted == null) {
             deleted = false;
         }
+        if (entryDate == null && shift != null) {
+            entryDate = LocalDate.now();
+        }
 
         Objects.requireNonNull(workspace, "workspace must not be null");
         Objects.requireNonNull(department, "department must not be null");
         Objects.requireNonNull(project, "project must not be null");
         Objects.requireNonNull(sender, "sender must not be null");
-        Objects.requireNonNull(receiver, "receiver must not be null");
         if (!Objects.equals(department.getId(), project.getDepartment().getId())) {
             throw new IllegalStateException("HandoverEntry.department must match project.department");
         }
         if (!Objects.equals(workspace.getId(), project.getDepartment().getWorkspace().getId())) {
             throw new IllegalStateException("HandoverEntry.workspace must match project.department.workspace");
         }
-        if (Objects.equals(sender.getId(), receiver.getId())) {
+        if (receiver != null && Objects.equals(sender.getId(), receiver.getId())) {
             throw new IllegalStateException("HandoverEntry.sender and receiver must be different users");
         }
     }
@@ -185,8 +230,14 @@ public class HandoverEntry extends AuditableEntity {
         URGENT
     }
 
+    public enum Shift {
+        MORNING,
+        EVENING
+    }
+
     public enum HandoverStatus {
         DRAFT,
+        SUBMITTED,
         PENDING,
         ACCEPTED,
         REJECTED,

@@ -27,6 +27,7 @@ import java.util.Set;
         indexes = {
                 @Index(name = "idx_teams_department_id", columnList = "department_id"),
                 @Index(name = "idx_teams_status", columnList = "status"),
+                @Index(name = "idx_teams_manager_id", columnList = "manager_id"),
                 @Index(name = "idx_teams_department_name", columnList = "department_id, name")
         },
         uniqueConstraints = {
@@ -45,6 +46,11 @@ public class Team extends AuditableEntity {
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "workspace_id", nullable = false)
+    private Workspace workspace;
+
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
@@ -56,6 +62,16 @@ public class Team extends AuditableEntity {
     @Size(max = 500)
     @Column(name = "description", length = 500)
     private String description;
+
+    /**
+     * Manager (User) responsible for the team.
+     *
+     * <p>Optional : a team may have no manager assigned yet. The manager must
+     * be an active member of the parent workspace.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_id")
+    private User manager;
 
     @NotNull
     @Enumerated(EnumType.STRING)

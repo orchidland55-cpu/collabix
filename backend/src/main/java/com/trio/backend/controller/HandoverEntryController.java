@@ -88,6 +88,21 @@ public class HandoverEntryController {
         return ApiResponse.success("Sent handovers retrieved successfully.", handoverEntryService.sent(workspaceId, pageable));
     }
 
+    @GetMapping("/my-entries")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_READ')")
+    @Operation(summary = "List the current user's handover entries (daily reports)", description = "Supports optional status / shift / entryDate / search filters.")
+    public ApiResponse<Page<HandoverEntryResponse>> myEntries(
+            @PathVariable UUID workspaceId,
+            @RequestParam(required = false) HandoverEntry.HandoverStatus status,
+            @RequestParam(required = false) HandoverEntry.Shift shift,
+            @RequestParam(required = false) java.time.LocalDate entryDate,
+            @RequestParam(required = false) String search,
+            Pageable pageable
+    ) {
+        return ApiResponse.success("My handover entries retrieved successfully.",
+                handoverEntryService.myEntries(workspaceId, status, shift, entryDate, search, pageable));
+    }
+
     @GetMapping("/{handoverEntryId}")
     @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_READ')")
     @Operation(summary = "Get a handover")
@@ -121,6 +136,18 @@ public class HandoverEntryController {
     ) {
         return ApiResponse.success("Handover sent successfully.",
                 handoverEntryService.send(workspaceId, handoverEntryId, request));
+    }
+
+    @PostMapping("/{handoverEntryId}/submit")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
+    @Operation(summary = "Submit a daily report entry (DRAFT/REJECTED -> SUBMITTED)", description = "Submitted entries are aggregated by the AI journal generator.")
+    public ApiResponse<HandoverEntryResponse> submit(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID handoverEntryId,
+            @RequestBody(required = false) HandoverStatusUpdateRequest request
+    ) {
+        return ApiResponse.success("Handover entry submitted successfully.",
+                handoverEntryService.submit(workspaceId, handoverEntryId, request));
     }
 
     @PostMapping("/{handoverEntryId}/accept")

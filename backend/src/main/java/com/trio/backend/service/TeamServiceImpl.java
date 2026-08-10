@@ -19,6 +19,7 @@ import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.mapper.TeamMapper;
 import com.trio.backend.repository.DepartmentRepository;
+import com.trio.backend.repository.TeamMemberRepository;
 import com.trio.backend.repository.TeamRepository;
 import com.trio.backend.repository.UserRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
@@ -30,6 +31,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 import java.util.List;
 import java.util.Locale;
@@ -63,7 +67,11 @@ public class TeamServiceImpl implements TeamService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final UserRepository userRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final TeamMapper teamMapper;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     public TeamResponse create(UUID workspaceId, UUID departmentId, CreateTeamRequest request) {
@@ -89,10 +97,14 @@ public class TeamServiceImpl implements TeamService {
             throw new ConflictException("Team with this name already exists.");
         }
 
-
         Team team = teamMapper.toEntity(request);
+        team.setWorkspace(department.getWorkspace());
         team.setDepartment(department);
         team.setStatus(WorkspaceStatus.ACTIVE);
+
+        if (request.getManagerId() != null) {
+            team.setManager(resolveManager(workspaceId, request.getManagerId()));
+        }
 
         Team saved = teamRepository.save(team);
         return teamMapper.toResponse(saved);
@@ -133,6 +145,18 @@ public class TeamServiceImpl implements TeamService {
                 .map(teamMapper::toSummary)
                 .toList();
 
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TeamSummaryResponse> listByWorkspace(UUID workspaceId) {
+
+        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+
+        return teamRepository.findAllByWorkspace_Id(workspaceId)
+                .stream()
+                .map(teamMapper::toSummary)
+                .toList();
     }
 
     @Override
@@ -178,6 +202,12 @@ public class TeamServiceImpl implements TeamService {
             request.setName(normalizedName);
         }
 
+        if (Boolean.TRUE.equals(request.getClearManager())) {
+            team.setManager(null);
+        } else if (request.getManagerId() != null) {
+            team.setManager(resolveManager(workspaceId, request.getManagerId()));
+        }
+
         teamMapper.updateTeam(request, team);
         Team saved = teamRepository.save(team);
         return teamMapper.toResponse(saved);
@@ -205,6 +235,72 @@ public class TeamServiceImpl implements TeamService {
 
         team.setStatus(WorkspaceStatus.ARCHIVED);
         teamRepository.save(team);
+    }
+
+    @Override
+    public void deletePermanently(UUID workspaceId, UUID departmentId, UUID teamId) {
+
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+
+        Team team = teamRepository.findByIdAndWorkspace_Id(teamId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found."));
+
+        if (!team.getDepartment().getId().equals(departmentId)) {
+            throw new ResourceNotFoundException("Team not found.");
+        }
+
+        // Only a Workspace Admin/Owner or the manager of this specific team may
+        // permanently delete it. Everything else is rejected (403).
+        assertCanPermanentlyDeleteTeam(workspaceId, team, userId);
+
+        // Detach optional team references on unrelated business entities. This
+        // follows the existing ON DELETE SET NULL convention instead of blindly
+        // cascading the deletion into data that is not owned by the team.
+        entityManager.createQuery("update Employee e set e.team = null where e.team.id = :teamId")
+                .setParameter("teamId", teamId)
+                .executeUpdate();
+        entityManager.createQuery("update PerformanceReview p set p.team = null where p.team.id = :teamId")
+                .setParameter("teamId", teamId)
+                .executeUpdate();
+        entityManager.createQuery("update Sprint s set s.team = null where s.team.id = :teamId")
+                .setParameter("teamId", teamId)
+                .executeUpdate();
+        entityManager.createQuery("update SecurityAudit sa set sa.team = null where sa.team.id = :teamId")
+                .setParameter("teamId", teamId)
+                .executeUpdate();
+        entityManager.createQuery("update MarketingCampaign mc set mc.team = null where mc.team.id = :teamId")
+                .setParameter("teamId", teamId)
+                .executeUpdate();
+
+        // Team memberships are owned by the team (DB FK is ON DELETE CASCADE).
+        // Removing them explicitly keeps the persistence context consistent.
+        teamMemberRepository.deleteAllByTeamId(teamId);
+
+        teamRepository.delete(team);
+    }
+
+    @Override
+    public TeamResponse restore(UUID workspaceId, UUID departmentId, UUID teamId) {
+
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        assertWorkspaceAdminOrOwner(workspaceId, userId);
+
+        Team team = teamRepository.findByIdAndWorkspace_Id(teamId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found."));
+
+        if (!team.getDepartment().getId().equals(departmentId)) {
+            throw new ResourceNotFoundException("Team not found.");
+        }
+
+        if (team.getStatus() != WorkspaceStatus.ARCHIVED) {
+            return teamMapper.toResponse(team);
+        }
+
+        team.setStatus(WorkspaceStatus.ACTIVE);
+        Team saved = teamRepository.save(team);
+        return teamMapper.toResponse(saved);
     }
 
     // ============================================================================
@@ -240,6 +336,43 @@ public class TeamServiceImpl implements TeamService {
         if (!isAdmin && !isOwner) {
             throw new ForbiddenException("You do not have permission for this operation.");
         }
+    }
+
+    /**
+     * Permanent deletion is reserved for a Workspace Admin/Owner or the manager
+     * of this specific team. All other users are rejected.
+     */
+    private void assertCanPermanentlyDeleteTeam(UUID workspaceId, Team team, UUID userId) {
+        boolean isAdmin = workspaceMemberRepository.existsWithRole(workspaceId, userId, WorkspaceRole.ADMIN);
+        boolean isOwner = workspaceRepository.findById(workspaceId)
+                .map(ws -> ws.getOwner().getId().equals(userId))
+                .orElse(false);
+        boolean isTeamManager = team.getManager() != null && team.getManager().getId().equals(userId);
+
+        if (!isAdmin && !isOwner && !isTeamManager) {
+            throw new ForbiddenException("You do not have permission to delete this team.");
+        }
+    }
+
+    /**
+     * Resolves and validates a team manager for a workspace.
+     *
+     * <p>The manager must be an existing user and an active member of the
+     * workspace, so that a team can never be tied to an external user.</p>
+     */
+    private User resolveManager(UUID workspaceId, UUID managerId) {
+        User manager = userRepository.findById(managerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Manager not found."));
+
+        WorkspaceMember wm = workspaceMemberRepository
+                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, managerId)
+                .orElseThrow(() -> new ForbiddenException("Manager must be a member of this workspace."));
+
+        if (wm.getStatus() != WorkspaceMemberStatus.ACTIVE) {
+            throw new ForbiddenException("Manager must have ACTIVE status in this workspace.");
+        }
+
+        return manager;
     }
 
     private String normalizeName(String value) {

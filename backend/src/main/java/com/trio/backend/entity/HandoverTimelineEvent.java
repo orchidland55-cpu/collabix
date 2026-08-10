@@ -53,6 +53,7 @@ public class HandoverTimelineEvent extends AuditableEntity {
         CREATED,
         UPDATED,
         SENT,
+        SUBMITTED,
         ACCEPTED,
         REJECTED,
         COMPLETED,

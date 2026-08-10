@@ -64,31 +64,43 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         Project project = validateAndGetProject(workspaceId, departmentId, projectId);
 
         LocalDate today = LocalDate.now();
-        LocalDateTime dayStart = today.atStartOfDay();
-        LocalDateTime dayEnd = today.atTime(LocalTime.MAX);
-        Instant startInstant = dayStart.atZone(ZoneId.systemDefault()).toInstant();
-        Instant endInstant = dayEnd.atZone(ZoneId.systemDefault()).toInstant();
-
-        List<HandoverEntry> entries = handoverEntryRepository
-                .findByProjectIdAndCreatedAtBetween(projectId, startInstant, endInstant);
-
         HandoverJournal journal = new HandoverJournal();
         journal.setWorkspace(project.getDepartment().getWorkspace());
         journal.setDepartment(project.getDepartment());
         journal.setProject(project);
         journal.setJournalDate(today.atStartOfDay());
 
+        HandoverJournal saved = handoverJournalRepository.save(populateFromSubmitted(workspaceId, departmentId, project, journal, today, userId));
+        log.info("HandoverJournal generated [ID: {}, Date: {}]", saved.getId(), today);
+        return saved;
+    }
+
+    private HandoverJournal populateFromSubmitted(UUID workspaceId, UUID departmentId, Project project,
+                                                  HandoverJournal journal, LocalDate date, UUID userId) {
+        LocalDateTime dayStart = date.atStartOfDay();
+        LocalDateTime dayEnd = date.atTime(LocalTime.MAX);
+
+        List<HandoverEntry> entries = handoverEntryRepository
+                .findSubmittedByDepartmentIdAndEntryDate(workspaceId, departmentId, date, null);
+
         journal.setTotalHandovers((long) entries.size());
-        journal.setPendingHandovers(countByStatus(entries, HandoverStatus.PENDING));
+        journal.setPendingHandovers(countByStatus(entries, HandoverStatus.SUBMITTED));
         journal.setCompletedHandovers(countByStatus(entries, HandoverStatus.COMPLETED));
         journal.setRejectedHandovers(countByStatus(entries, HandoverStatus.REJECTED));
         journal.setUrgentHandovers(entries.stream().filter(e -> e.getPriority() == HandoverEntry.Priority.URGENT).count());
         journal.setOverdueHandovers(entries.stream().filter(HandoverJournalServiceImpl::isOverdue).count());
 
+        journal.setEntriesCount((long) entries.size());
+        journal.setDepartmentsIncluded(project.getDepartment().getName());
+        journal.setGeneratedBy("Synthesizer");
+        if (journal.getJournalVersion() == null) {
+            journal.setJournalVersion(1);
+        }
+
         journal.setGeneratedSummary(buildDeterministicSummary(project, dayStart, dayEnd, entries));
         journal.setMainDoneWork(extractFieldConsolidation(entries, "completed"));
         journal.setMainRemainingWork(extractFieldConsolidation(entries, "pending"));
-        journal.setBlockers(extractFieldConsolidation(entries, "overdue"));
+        journal.setBlockers(extractFieldConsolidation(entries, "blockers"));
         journal.setDifficulties(extractFieldConsolidation(entries, "urgent"));
         journal.setRecommendations(extractFieldConsolidation(entries, "rejected"));
 
@@ -96,32 +108,64 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         journal.setGenerationDate(LocalDateTime.now());
         journal.setGenerationProcessedBy(userId);
         journal.setStatus(HandoverJournal.HandoverJournalStatus.ACTIVE);
-
-        HandoverJournal saved = handoverJournalRepository.save(journal);
-        log.info("HandoverJournal generated [ID: {}, Date: {}]", saved.getId(), today);
-        return saved;
+        return journal;
     }
 
     @Override
     @Transactional(readOnly = true)
     public HandoverJournalResponse getById(UUID workspaceId, UUID departmentId, UUID projectId, UUID handoverJournalId) {
-        support.assertActiveWorkspaceMember(workspaceId, support.currentUserId());
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
 
         HandoverJournal journal = handoverJournalRepository.findByIdAndWorkspace(handoverJournalId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Handover log not found."));
 
         validateJournalHierarchy(journal, departmentId, projectId);
+        support.assertCanViewDepartmentJournal(workspaceId, journal.getDepartment().getId());
         return handoverJournalMapper.toResponse(journal);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<HandoverJournalResponse> list(UUID workspaceId, UUID departmentId, UUID projectId, Pageable pageable) {
-        support.assertActiveWorkspaceMember(workspaceId, support.currentUserId());
-        validateAndGetProject(workspaceId, departmentId, projectId);
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        UUID effectiveDepartmentId = support.resolveAccessibleDepartment(workspaceId, departmentId);
+        validateAndGetProject(workspaceId, effectiveDepartmentId, projectId);
 
         return handoverJournalRepository.findByProjectIdPaginated(projectId, pageable)
                 .map(handoverJournalMapper::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<HandoverJournalResponse> listAccessible(UUID workspaceId, UUID departmentId, UUID projectId,
+                                                        HandoverEntry.Shift shift, LocalDate date, Pageable pageable) {
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        UUID effectiveDepartmentId = support.resolveAccessibleDepartment(workspaceId, departmentId);
+
+        LocalDateTime from = date == null ? null : date.atStartOfDay();
+        LocalDateTime to = date == null ? null : date.atStartOfDay().plusDays(1);
+
+        return handoverJournalRepository.findAccessiblePaginated(
+                        workspaceId, effectiveDepartmentId, projectId, shift, from, to, pageable)
+                .map(handoverJournalMapper::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public HandoverJournalResponse getByIdAccessible(UUID workspaceId, UUID handoverJournalId) {
+        UUID userId = support.currentUserId();
+        support.assertActiveWorkspaceMember(workspaceId, userId);
+
+        HandoverJournal journal = handoverJournalRepository.findByIdAndWorkspace(handoverJournalId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Handover log not found."));
+
+        support.assertCanViewDepartmentJournal(workspaceId, journal.getDepartment().getId());
+        return handoverJournalMapper.toResponse(journal);
     }
 
     @Override
@@ -139,31 +183,9 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         validateJournalHierarchy(journal, departmentId, projectId);
 
         LocalDate logDate = journal.getJournalDate().toLocalDate();
-        LocalDateTime dayStart = logDate.atStartOfDay();
-        LocalDateTime dayEnd = logDate.atTime(LocalTime.MAX);
-        Instant startInstant = dayStart.atZone(ZoneId.systemDefault()).toInstant();
-        Instant endInstant = dayEnd.atZone(ZoneId.systemDefault()).toInstant();
+        journal.setJournalVersion(journal.getJournalVersion() == null ? 2 : journal.getJournalVersion() + 1);
 
-        List<HandoverEntry> entries = handoverEntryRepository
-                .findByProjectIdAndCreatedAtBetween(projectId, startInstant, endInstant);
-
-        journal.setTotalHandovers((long) entries.size());
-        journal.setPendingHandovers(countByStatus(entries, HandoverStatus.PENDING));
-        journal.setCompletedHandovers(countByStatus(entries, HandoverStatus.COMPLETED));
-        journal.setRejectedHandovers(countByStatus(entries, HandoverStatus.REJECTED));
-        journal.setUrgentHandovers(entries.stream().filter(e -> e.getPriority() == HandoverEntry.Priority.URGENT).count());
-        journal.setOverdueHandovers(entries.stream().filter(HandoverJournalServiceImpl::isOverdue).count());
-
-        journal.setGeneratedSummary(buildDeterministicSummary(projectRepository
-                        .findByIdAndDepartment_Id(projectId, departmentId).orElse(null), dayStart, dayEnd, entries));
-        journal.setMainDoneWork(extractFieldConsolidation(entries, "completed"));
-        journal.setMainRemainingWork(extractFieldConsolidation(entries, "pending"));
-        journal.setBlockers(extractFieldConsolidation(entries, "overdue"));
-        journal.setDifficulties(extractFieldConsolidation(entries, "urgent"));
-        journal.setRecommendations(extractFieldConsolidation(entries, "rejected"));
-
-        journal.setGenerationDate(LocalDateTime.now());
-        journal.setGenerationProcessedBy(userId);
+        populateFromSubmitted(workspaceId, departmentId, journal.getProject(), journal, logDate, userId);
 
         HandoverJournal updated = handoverJournalRepository.save(journal);
         log.info("HandoverJournal regenerated [ID: {}]", updated.getId());
@@ -214,15 +236,13 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         StringBuilder sb = new StringBuilder();
 
         if (entries.isEmpty()) {
-            sb.append("No handovers recorded for this project on this day.");
+            sb.append("No submitted handover entries for this department on this day.");
         } else {
             sb.append("[V1 Synthesizer] Collected ").append(entries.size())
-                    .append(" handover(s) for the day.\n");
+                    .append(" submitted handover entry(ies) for the day.\n");
             entries.stream()
-                    .map(e -> String.format("- [%s] %s (from %s to %s)",
-                            e.getStatus(), e.getTitle(),
-                            support.userDisplayName(e.getSender()),
-                            support.userDisplayName(e.getReceiver())))
+                    .map(e -> String.format("- [%s] %s",
+                            e.getStatus(), entryLabel(e)))
                     .forEach(l -> sb.append(l).append("\n"));
         }
 
@@ -232,6 +252,17 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         }
 
         return sb.toString();
+    }
+
+    private String entryLabel(HandoverEntry e) {
+        String title = e.getTitle() == null || e.getTitle().isBlank()
+                ? (e.getShift() == null ? "Entry" : "Entry (" + e.getShift() + ")")
+                : e.getTitle();
+        String sender = support.userDisplayName(e.getSender());
+        if (e.getReceiver() == null) {
+            return title + " (by " + sender + ")";
+        }
+        return title + " (from " + sender + " to " + support.userDisplayName(e.getReceiver()) + ")";
     }
 
     private String buildProjectContext(Project project, LocalDateTime dayStart, LocalDateTime dayEnd) {
@@ -258,19 +289,34 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
     private String extractFieldConsolidation(List<HandoverEntry> entries, String fieldType) {
         String consolidated = entries.stream()
                 .filter(e -> switch (fieldType) {
-                    case "completed" -> e.getStatus() == HandoverStatus.COMPLETED;
-                    case "pending" -> e.getStatus() == HandoverStatus.PENDING;
+                    case "completed" -> e.getStatus() == HandoverStatus.SUBMITTED;
+                    case "pending" -> e.getStatus() == HandoverStatus.SUBMITTED
+                            || e.getStatus() == HandoverStatus.PENDING;
                     case "rejected" -> e.getStatus() == HandoverStatus.REJECTED;
                     case "urgent" -> e.getPriority() == HandoverEntry.Priority.URGENT;
-                    case "overdue" -> isOverdue(e);
+                    case "blockers" -> true;
                     default -> false;
                 })
-                .map(e -> String.format("- %s (%s): %s", e.getTitle(),
-                        support.userDisplayName(e.getSender()), e.getContent()))
-                .filter(content -> !content.isBlank())
+                .map(e -> switch (fieldType) {
+                    case "blockers" -> formatReportField(e, e.getBlockers(), "No blockers");
+                    case "completed" -> formatReportField(e, e.getCompletedTasks(), e.getContent());
+                    case "pending" -> formatReportField(e, e.getPendingTasks(), e.getContent());
+                    case "rejected" -> formatReportField(e, e.getContent(), e.getContent());
+                    case "urgent" -> formatReportField(e, e.getCompletedTasks(), e.getContent());
+                    default -> "";
+                })
+                .filter(content -> content != null && !content.isBlank())
                 .collect(Collectors.joining("\n\n"));
 
         return consolidated.isEmpty() ? "Non renseigne" : consolidated;
+    }
+
+    private String formatReportField(HandoverEntry e, String field, String fallback) {
+        String text = field == null || field.isBlank() ? fallback : field;
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return "- " + entryLabel(e) + ": " + text.replace("\n", " ");
     }
 
     // ============================================================================

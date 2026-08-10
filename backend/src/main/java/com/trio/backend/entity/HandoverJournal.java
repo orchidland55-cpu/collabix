@@ -66,6 +66,43 @@ public class HandoverJournal extends AuditableEntity {
     private LocalDateTime journalDate;
 
     // =========================================================================
+    // Generation metadata
+    // =========================================================================
+
+    /**
+     * Shift this journal covers (MORNING / EVENING). Optional.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "shift", length = 20)
+    private HandoverEntry.Shift shift;
+
+    /**
+     * Journal version - incremented every regeneration for the same day.
+     */
+    @NotNull
+    @Column(name = "journal_version", nullable = false)
+    private Integer journalVersion = 1;
+
+    /**
+     * Human-readable generator label (e.g. "Gemini").
+     */
+    @Column(name = "generated_by", length = 255)
+    private String generatedBy;
+
+    /**
+     * Comma-separated names of the departments included in this journal.
+     */
+    @Column(name = "departments_included", length = 500)
+    private String departmentsIncluded;
+
+    /**
+     * Number of submitted Handover Entries aggregated into this journal.
+     */
+    @NotNull
+    @Column(name = "entries_count", nullable = false)
+    private Long entriesCount = 0L;
+
+    // =========================================================================
     // Generated fields
     // =========================================================================
 
@@ -160,6 +197,8 @@ public class HandoverJournal extends AuditableEntity {
         if (rejectedHandovers == null) rejectedHandovers = 0L;
         if (urgentHandovers == null) urgentHandovers = 0L;
         if (overdueHandovers == null) overdueHandovers = 0L;
+        if (journalVersion == null) journalVersion = 1;
+        if (entriesCount == null) entriesCount = 0L;
 
         Objects.requireNonNull(workspace, "workspace must not be null");
         Objects.requireNonNull(department, "department must not be null");

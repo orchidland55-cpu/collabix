@@ -4,7 +4,9 @@ import com.trio.backend.dto.organisation.handover.HandoverJournalResponse;
 import com.trio.backend.entity.*;
 import com.trio.backend.entity.HandoverEntry.HandoverStatus;
 import com.trio.backend.entity.HandoverEntry.Priority;
+import com.trio.backend.entity.HandoverEntry.Shift;
 import com.trio.backend.enums.*;
+import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.mapper.HandoverJournalMapper;
 import com.trio.backend.repository.*;
@@ -136,6 +138,8 @@ class HandoverJournalServiceImplTest {
 
         lenient().when(support.currentUserId()).thenReturn(userId);
         lenient().when(support.isWorkspaceAdminOrOwner(wsId, userId)).thenReturn(true);
+        lenient().when(support.currentUserDepartmentId()).thenReturn(deptId);
+        lenient().when(support.resolveAccessibleDepartment(wsId, deptId)).thenReturn(deptId);
         lenient().when(support.userDisplayName(any())).thenReturn("Admin User");
     }
 
@@ -148,7 +152,7 @@ class HandoverJournalServiceImplTest {
         Instant endInstant = dayEnd.atZone(ZoneId.systemDefault()).toInstant();
 
         when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
-        when(handoverEntryRepository.findByProjectIdAndCreatedAtBetween(projId, startInstant, endInstant))
+        when(handoverEntryRepository.findSubmittedByDepartmentIdAndEntryDate(wsId, deptId, LocalDate.now(), null))
                 .thenReturn(List.of());
         when(handoverJournalRepository.save(any(HandoverJournal.class))).thenReturn(exampleJournal);
         when(handoverJournalMapper.toResponse(exampleJournal)).thenReturn(exampleResponse);
@@ -215,6 +219,56 @@ class HandoverJournalServiceImplTest {
     }
 
     @Test
+    void getByIdShouldThrowWhenMemberOfDifferentDepartment() {
+        when(handoverJournalRepository.findByIdAndWorkspace(journalId, wsId)).thenReturn(Optional.of(exampleJournal));
+        doThrow(ForbiddenException.class).when(support).assertCanViewDepartmentJournal(eq(wsId), any());
+
+        assertThrows(ForbiddenException.class,
+                () -> handoverJournalService.getById(wsId, deptId, projId, journalId));
+    }
+
+    @Test
+    void getByIdAccessibleShouldReturnForAdmin() {
+        when(handoverJournalRepository.findByIdAndWorkspace(journalId, wsId)).thenReturn(Optional.of(exampleJournal));
+        when(handoverJournalMapper.toResponse(exampleJournal)).thenReturn(exampleResponse);
+
+        HandoverJournalResponse result = handoverJournalService.getByIdAccessible(wsId, journalId);
+
+        assertNotNull(result);
+    }
+
+    @Test
+    void getByIdAccessibleShouldThrowWhenMemberOfDifferentDepartment() {
+        when(handoverJournalRepository.findByIdAndWorkspace(journalId, wsId)).thenReturn(Optional.of(exampleJournal));
+        doThrow(ForbiddenException.class).when(support).assertCanViewDepartmentJournal(eq(wsId), any());
+
+        assertThrows(ForbiddenException.class,
+                () -> handoverJournalService.getByIdAccessible(wsId, journalId));
+    }
+
+    @Test
+    void listAccessibleShouldReturnPaginatedResults() {
+        Page<HandoverJournal> page = new PageImpl<>(List.of(exampleJournal));
+        when(handoverJournalRepository.findAccessiblePaginated(eq(wsId), eq(deptId), isNull(), isNull(), isNull(), isNull(), any(PageRequest.class)))
+                .thenReturn(page);
+        when(handoverJournalMapper.toResponse(exampleJournal)).thenReturn(exampleResponse);
+
+        Page<HandoverJournalResponse> result = handoverJournalService.listAccessible(
+                wsId, deptId, null, null, null, PageRequest.of(0, 10));
+
+        assertEquals(1, result.getTotalElements());
+    }
+
+    @Test
+    void listAccessibleShouldThrowWhenRequestingOtherDepartment() {
+        UUID otherDept = UUID.randomUUID();
+        doThrow(ForbiddenException.class).when(support).resolveAccessibleDepartment(eq(wsId), eq(otherDept));
+
+        assertThrows(ForbiddenException.class,
+                () -> handoverJournalService.listAccessible(wsId, otherDept, null, null, null, PageRequest.of(0, 10)));
+    }
+
+    @Test
     void listShouldReturnPaginatedResults() {
         Page<HandoverJournal> page = new PageImpl<>(List.of(exampleJournal));
         when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
@@ -229,13 +283,9 @@ class HandoverJournalServiceImplTest {
     @Test
     void regenerateShouldUpdateExistingJournal() {
         LocalDate journalDate = exampleJournal.getJournalDate().toLocalDate();
-        LocalDateTime dayStart = journalDate.atStartOfDay();
-        LocalDateTime dayEnd = journalDate.atTime(LocalTime.MAX);
 
         when(handoverJournalRepository.findByIdAndWorkspace(journalId, wsId)).thenReturn(Optional.of(exampleJournal));
-        when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
-        when(handoverEntryRepository.findByProjectIdAndCreatedAtBetween(projId,
-                dayStart.atZone(ZoneId.systemDefault()).toInstant(), dayEnd.atZone(ZoneId.systemDefault()).toInstant()))
+        when(handoverEntryRepository.findSubmittedByDepartmentIdAndEntryDate(wsId, deptId, journalDate, null))
                 .thenReturn(List.of());
         when(handoverJournalRepository.save(any(HandoverJournal.class))).thenReturn(exampleJournal);
         when(handoverJournalMapper.toResponse(exampleJournal)).thenReturn(exampleResponse);
@@ -277,12 +327,9 @@ class HandoverJournalServiceImplTest {
     @Test
     void generateJournalInternalShouldReturnSavedEntity() {
         LocalDate today = LocalDate.now();
-        LocalDateTime dayStart = today.atStartOfDay();
-        LocalDateTime dayEnd = today.atTime(LocalTime.MAX);
 
         when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
-        when(handoverEntryRepository.findByProjectIdAndCreatedAtBetween(projId,
-                dayStart.atZone(ZoneId.systemDefault()).toInstant(), dayEnd.atZone(ZoneId.systemDefault()).toInstant()))
+        when(handoverEntryRepository.findSubmittedByDepartmentIdAndEntryDate(wsId, deptId, today, null))
                 .thenReturn(List.of());
         when(handoverJournalRepository.save(any(HandoverJournal.class))).thenReturn(exampleJournal);
 
@@ -295,8 +342,6 @@ class HandoverJournalServiceImplTest {
     @Test
     void generateJournalInternalShouldAggregateEntries() {
         LocalDate today = LocalDate.now();
-        LocalDateTime dayStart = today.atStartOfDay();
-        LocalDateTime dayEnd = today.atTime(LocalTime.MAX);
 
         User otherUser = User.builder().firstName("Other").build();
         ReflectionTestUtils.setField(otherUser, "id", UUID.randomUUID());
@@ -306,17 +351,15 @@ class HandoverJournalServiceImplTest {
                 .department(department)
                 .project(project)
                 .sender(otherUser)
-                .receiver(actor)
                 .title("Bug fix")
-                .content("Fixed bug")
+                .completedTasks("Fixed bug")
                 .priority(Priority.HIGH)
-                .status(HandoverStatus.COMPLETED)
+                .status(HandoverStatus.SUBMITTED)
                 .build();
         ReflectionTestUtils.setField(entry, "id", UUID.randomUUID());
 
         when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
-        when(handoverEntryRepository.findByProjectIdAndCreatedAtBetween(projId,
-                dayStart.atZone(ZoneId.systemDefault()).toInstant(), dayEnd.atZone(ZoneId.systemDefault()).toInstant()))
+        when(handoverEntryRepository.findSubmittedByDepartmentIdAndEntryDate(wsId, deptId, today, null))
                 .thenReturn(List.of(entry));
         when(handoverJournalRepository.save(any(HandoverJournal.class))).thenAnswer(invocation -> {
             HandoverJournal saved = invocation.getArgument(0);
@@ -328,10 +371,9 @@ class HandoverJournalServiceImplTest {
 
         assertNotNull(result);
         assertEquals(1L, result.getTotalHandovers());
-        assertTrue(result.getGeneratedSummary().contains("[V1 Synthesizer] Collected 1 handover(s) for the day."));
+        assertTrue(result.getGeneratedSummary().contains("[V1 Synthesizer] Collected 1 submitted handover entry(ies) for the day."));
         assertTrue(result.getGeneratedSummary().contains("--- Project context ---"));
         assertTrue(result.getMainDoneWork().contains("Fixed bug"));
-        verify(handoverEntryRepository).findByProjectIdAndCreatedAtBetween(projId,
-                dayStart.atZone(ZoneId.systemDefault()).toInstant(), dayEnd.atZone(ZoneId.systemDefault()).toInstant());
+        verify(handoverEntryRepository).findSubmittedByDepartmentIdAndEntryDate(wsId, deptId, today, null);
     }
 }

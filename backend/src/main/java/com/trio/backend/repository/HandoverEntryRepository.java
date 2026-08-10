@@ -3,6 +3,7 @@ package com.trio.backend.repository;
 import com.trio.backend.entity.HandoverEntry;
 import com.trio.backend.entity.HandoverEntry.HandoverStatus;
 import com.trio.backend.entity.HandoverEntry.Priority;
+import com.trio.backend.entity.HandoverEntry.Shift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -125,6 +127,25 @@ public interface HandoverEntryRepository extends JpaRepository<HandoverEntry, UU
     );
 
     @Query("""
+            SELECT he FROM HandoverEntry he
+            WHERE he.workspace.id = :workspaceId
+              AND he.department.id = :departmentId
+              AND (:status IS NULL OR he.status = :status)
+              AND (:priority IS NULL OR he.priority = :priority)
+              AND (:projectId IS NULL OR he.project.id = :projectId)
+              AND he.deleted = false
+            ORDER BY he.updatedAt DESC
+            """)
+    Page<HandoverEntry> searchByDepartment(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("departmentId") UUID departmentId,
+            @Param("status") HandoverStatus status,
+            @Param("priority") Priority priority,
+            @Param("projectId") UUID projectId,
+            Pageable pageable
+    );
+
+    @Query("""
             SELECT COUNT(he) FROM HandoverEntry he
             WHERE he.workspace.id = :workspaceId
               AND he.deleted = false
@@ -172,7 +193,52 @@ public interface HandoverEntryRepository extends JpaRepository<HandoverEntry, UU
             @Param("userId") UUID userId
     );
 
+    // ==================== MY ENTRIES (daily reports) ====================
+
+    @Query("""
+            SELECT he FROM HandoverEntry he
+            WHERE he.workspace.id = :workspaceId
+              AND he.sender.id = :userId
+              AND (:status IS NULL OR he.status = :status)
+              AND (:shift IS NULL OR he.shift = :shift)
+              AND (:entryDate IS NULL OR he.entryDate = :entryDate)
+              AND (:search IS NULL OR :search = ''
+                   OR LOWER(COALESCE(he.title, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(he.completedTasks, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(he.currentProgress, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(he.pendingTasks, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(he.importantNotes, '')) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND he.deleted = false
+            ORDER BY he.updatedAt DESC
+            """)
+    Page<HandoverEntry> findMine(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("userId") UUID userId,
+            @Param("status") HandoverStatus status,
+            @Param("shift") Shift shift,
+            @Param("entryDate") LocalDate entryDate,
+            @Param("search") String search,
+            Pageable pageable
+    );
+
     // ==================== JOURNAL AGGREGATION ====================
+
+    @Query("""
+            SELECT he FROM HandoverEntry he
+            WHERE he.workspace.id = :workspaceId
+              AND he.department.id = :departmentId
+              AND he.status = 'SUBMITTED'
+              AND (:entryDate IS NULL OR he.entryDate = :entryDate)
+              AND (:shift IS NULL OR he.shift = :shift)
+              AND he.deleted = false
+            ORDER BY he.entryDate ASC, he.createdAt ASC
+            """)
+    List<HandoverEntry> findSubmittedByDepartmentIdAndEntryDate(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("departmentId") UUID departmentId,
+            @Param("entryDate") LocalDate entryDate,
+            @Param("shift") Shift shift
+    );
 
     @Query("""
             SELECT he FROM HandoverEntry he

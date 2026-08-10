@@ -1,6 +1,7 @@
 package com.trio.backend.service;
 
 import com.trio.backend.dto.notification.CreateNotificationRequest;
+import com.trio.backend.entity.Department;
 import com.trio.backend.entity.HandoverEntry;
 import com.trio.backend.entity.HandoverTimelineEvent;
 import com.trio.backend.entity.HandoverTimelineEvent.TimelineEventType;
@@ -12,6 +13,7 @@ import com.trio.backend.enums.WorkspaceRole;
 import com.trio.backend.exception.BadRequestException;
 import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.repository.HandoverTimelineEventRepository;
+import com.trio.backend.repository.UserRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
 import com.trio.backend.security.user.CustomUserDetails;
@@ -21,6 +23,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -36,6 +39,7 @@ public class HandoverSupport {
     private final WorkspaceRepository workspaceRepository;
     private final HandoverTimelineEventRepository timelineEventRepository;
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     public UUID currentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -71,6 +75,58 @@ public class HandoverSupport {
                 .map(ws -> ws.getOwner().getId().equals(userId))
                 .orElse(false);
         return isAdmin || isOwner;
+    }
+
+    public boolean isWorkspaceManager(UUID workspaceId, UUID userId) {
+        return workspaceMemberRepository.existsWithRole(workspaceId, userId, WorkspaceRole.MANAGER);
+    }
+
+    /**
+     * Returns the current user's primary department id, or fails closed with a 403
+     * when the user has no department assigned (department-scoped operations require it).
+     */
+    public UUID currentUserDepartmentId() {
+        UUID userId = currentUserId();
+        return userRepository.findById(userId)
+                .map(User::getPrimaryDepartment)
+                .filter(Objects::nonNull)
+                .map(Department::getId)
+                .orElseThrow(() -> new ForbiddenException("You are not assigned to a department."));
+    }
+
+    /**
+     * Department-scoped journal read guard.
+     * <p>Workspace ADMIN/OWNER can read journals of any department. Managers and Members
+     * can only read journals of their own primary department; any other department is a 403.</p>
+     */
+    public void assertCanViewDepartmentJournal(UUID workspaceId, UUID journalDepartmentId) {
+        UUID userId = currentUserId();
+        if (isWorkspaceAdminOrOwner(workspaceId, userId)) {
+            return;
+        }
+        if (!Objects.equals(currentUserDepartmentId(), journalDepartmentId)) {
+            throw new ForbiddenException("You do not have permission to access this department's handover journal.");
+        }
+    }
+
+    /**
+     * Resolves the effective department filter for a department-scoped journal listing.
+     * <p>Workspace ADMIN/OWNER may scope to any department (or none for all departments).
+     * Managers and Members are locked to their own primary department; requesting another
+     * department is a 403.</p>
+     *
+     * @return the department id to scope the query with, or {@code null} for all departments (admins only)
+     */
+    public UUID resolveAccessibleDepartment(UUID workspaceId, UUID requestedDepartmentId) {
+        UUID userId = currentUserId();
+        if (isWorkspaceAdminOrOwner(workspaceId, userId)) {
+            return requestedDepartmentId;
+        }
+        UUID myDepartmentId = currentUserDepartmentId();
+        if (requestedDepartmentId != null && !myDepartmentId.equals(requestedDepartmentId)) {
+            throw new ForbiddenException("You do not have permission to access this department's handover journal.");
+        }
+        return myDepartmentId;
     }
 
     public void addTimelineEvent(HandoverEntry entry, TimelineEventType type, String description, UUID actorId) {

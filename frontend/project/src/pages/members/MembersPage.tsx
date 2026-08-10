@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -14,10 +15,13 @@ import {
   UserPlus,
   Edit2,
   UserX,
+  AlertCircle,
 } from 'lucide-react';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Modal } from '../../components/ui/Modal';
 import { Badge, type Tone } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
 import { IconButton } from '../../components/ui/IconButton';
@@ -25,21 +29,61 @@ import { Table } from '../../components/ui/Table';
 import { Progress } from '../../components/ui/Progress';
 import { Dropdown, type DropdownItem } from '../../components/ui/Dropdown';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
+import { useWorkspaceId } from '../../hooks/useWorkspaceId';
+import {
+  useUsersList,
+  useDepartmentsList,
+  useTeamsByDepartment,
+  useUpdateUser,
+  useDeleteUser,
+  useActivateUser,
+  useDeactivateUser,
+  useAssignRoles,
+} from '../../services/admin-hooks';
+import { useWorkspaceTeams } from '../../services/team-hooks';
+import { CreateUserModal } from '../Administration/Users Management/CreateUserModal';
 import type { MemberProfile, MemberFilters } from './members-types';
-import { membersList } from './members-data';
+import { mapUserToMemberProfile } from './members-utils';
+import type { UserResponse } from '../../types';
+import { RoleName, UserStatus } from '../../types';
 
 type ViewMode = 'grid' | 'table';
 
+interface ConfirmAction {
+  type: 'delete' | 'activate' | 'deactivate';
+  user: UserResponse;
+}
+
+const ROLE_OPTIONS = Object.values(RoleName).map((r) => ({ value: r, label: r }));
+
 export function MembersPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<MemberFilters>({});
   const [sortBy, setSortBy] = useState<'name' | 'joinedDate' | 'workload'>('name');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [assignUser, setAssignUser] = useState<UserResponse | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+
+  const { data: users, isLoading, isError, error } = useUsersList();
+  const deleteUser = useDeleteUser();
+  const activateUser = useActivateUser();
+  const deactivateUser = useDeactivateUser();
+
+  const profiles = useMemo(
+    () => (users ?? [])
+      .filter((u) => u.status !== UserStatus.ARCHIVED && u.status !== UserStatus.SOFT_DELETED)
+      .map(mapUserToMemberProfile),
+    [users],
+  );
 
   const filteredMembers = useMemo(() => {
-    let result = membersList;
+    let result = profiles;
 
     if (search) {
       const q = search.toLowerCase();
@@ -80,11 +124,59 @@ export function MembersPage() {
     });
 
     return result;
-  }, [search, filters, sortBy]);
+  }, [profiles, search, filters, sortBy]);
 
-  const departments = Array.from(new Set(membersList.map((m) => m.department)));
-  const teams = Array.from(new Set(membersList.map((m) => m.team)));
-  const roles = Array.from(new Set(membersList.map((m) => m.role)));
+  const departments = useMemo(() => Array.from(new Set(profiles.map((m) => m.department))), [profiles]);
+  const teams = useMemo(() => Array.from(new Set(profiles.map((m) => m.team))), [profiles]);
+  const roles = useMemo(() => Array.from(new Set(profiles.map((m) => m.role))), [profiles]);
+
+  const openMember = (id: string) => navigate(`/app/members/${id}${location.search}`);
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const user = confirmAction.user;
+    try {
+      if (confirmAction.type === 'delete') {
+        await deleteUser.mutateAsync(user.id);
+        toast({ title: 'Member removed', tone: 'success' });
+      } else if (confirmAction.type === 'deactivate') {
+        await deactivateUser.mutateAsync(user.id);
+        toast({ title: 'Member deactivated', tone: 'success' });
+      } else {
+        await activateUser.mutateAsync(user.id);
+        toast({ title: 'Member activated', tone: 'success' });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Action failed';
+      toast({ title: msg, tone: 'danger' });
+    }
+    setConfirmAction(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-8 w-40" />
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton className="h-10 w-full max-w-sm" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <EmptyState
+        icon={<AlertCircle className="h-6 w-6" />}
+        title="Failed to load members"
+        description={error?.message ?? 'An error occurred while fetching workspace members.'}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -197,7 +289,7 @@ export function MembersPage() {
             </IconButton>
           </div>
 
-          <Button leftIcon={<Plus />} onClick={() => toast({ title: 'Coming Soon', description: 'Invite member feature is coming soon.', tone: 'info' })}>Invite Member</Button>
+          <Button leftIcon={<Plus />} onClick={() => setInviteOpen(true)}>Invite Member</Button>
         </div>
       </div>
 
@@ -209,25 +301,86 @@ export function MembersPage() {
           description="Try adjusting your search or filters to find members."
         />
       ) : viewMode === 'grid' ? (
-        <MembersGridView members={filteredMembers} />
+        <MembersGridView
+          members={filteredMembers}
+          onView={(m) => openMember(m.id)}
+          onAssign={(m) => setAssignUser(users?.find((u) => u.id === m.id) ?? null)}
+          onDeactivate={(m) => {
+            const user = users?.find((u) => u.id === m.id);
+            if (user) setConfirmAction({ type: 'deactivate', user });
+          }}
+        />
       ) : (
-        <MembersTableView members={filteredMembers} />
+        <MembersTableView
+          members={filteredMembers}
+          onView={(m) => openMember(m.id)}
+          onAssign={(m) => setAssignUser(users?.find((u) => u.id === m.id) ?? null)}
+          onToggleStatus={(m) => {
+            const user = users?.find((u) => u.id === m.id);
+            if (user) setConfirmAction({ type: m.status === 'active' ? 'deactivate' : 'activate', user });
+          }}
+          onDelete={(m) => {
+            const user = users?.find((u) => u.id === m.id);
+            if (user) setConfirmAction({ type: 'delete', user });
+          }}
+        />
+      )}
+
+      {/* Invite modal */}
+      <CreateUserModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+
+      {/* Assign / edit member */}
+      {assignUser && <AssignMemberModal user={assignUser} onClose={() => setAssignUser(null)} />}
+
+      {/* Confirm action */}
+      {confirmAction && (
+        <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} title="Confirm Action" size="sm">
+          <p className="text-body text-text-secondary">
+            Are you sure you want to {confirmAction.type === 'delete' ? 'remove this member' : confirmAction.type === 'deactivate' ? 'deactivate this member' : 'activate this member'}?
+          </p>
+          <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-border-subtle">
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
+            <Button variant={confirmAction.type === 'delete' ? 'danger' : 'primary'} onClick={handleConfirmAction}>
+              Confirm
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );
 }
 
-function MembersGridView({ members }: { members: MemberProfile[] }) {
+function MembersGridView({
+  members,
+  onView,
+  onAssign,
+  onDeactivate,
+}: {
+  members: MemberProfile[];
+  onView: (member: MemberProfile) => void;
+  onAssign: (member: MemberProfile) => void;
+  onDeactivate: (member: MemberProfile) => void;
+}) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {members.map((member) => (
-        <MemberCard key={member.id} member={member} />
+        <MemberCard key={member.id} member={member} onView={() => onView(member)} onAssign={() => onAssign(member)} onDeactivate={() => onDeactivate(member)} />
       ))}
     </div>
   );
 }
 
-function MemberCard({ member }: { member: MemberProfile }) {
+function MemberCard({
+  member,
+  onView,
+  onAssign,
+  onDeactivate,
+}: {
+  member: MemberProfile;
+  onView: () => void;
+  onAssign: () => void;
+  onDeactivate: () => void;
+}) {
   const statusColor: Record<typeof member.status, string> = {
     active: 'success',
     away: 'warning',
@@ -243,12 +396,11 @@ function MemberCard({ member }: { member: MemberProfile }) {
   };
 
   const actionItems: DropdownItem[] = [
-    { label: 'View Profile', icon: <Eye className="h-4 w-4" />, onClick: () => {} },
-    { label: 'Assign Project', icon: <Plus className="h-4 w-4" />, onClick: () => {} },
-    { label: 'Assign Team', icon: <UserPlus className="h-4 w-4" />, onClick: () => {} },
+    { label: 'View Profile', icon: <Eye className="h-4 w-4" />, onClick: onView },
+    { label: 'Assign Team / Department', icon: <UserPlus className="h-4 w-4" />, onClick: onAssign },
     { divider: true },
-    { label: 'Edit', icon: <Edit2 className="h-4 w-4" />, onClick: () => {} },
-    { label: 'Deactivate', icon: <UserX className="h-4 w-4" />, danger: true, onClick: () => {} },
+    { label: 'Edit Member', icon: <Edit2 className="h-4 w-4" />, onClick: onAssign },
+    { label: 'Deactivate', icon: <UserX className="h-4 w-4" />, danger: true, onClick: onDeactivate },
   ];
 
   return (
@@ -256,7 +408,7 @@ function MemberCard({ member }: { member: MemberProfile }) {
       <CardBody className="flex flex-col gap-4">
         {/* Header with avatar and actions */}
         <div className="flex items-start justify-between gap-3">
-          <Avatar name={member.name} size="lg" tone={member.tone} />
+          <Avatar name={member.name} size="lg" tone={member.tone} src={member.avatar} />
           <Dropdown trigger={<IconButton label="Actions" variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></IconButton>} items={actionItems} align="right" />
         </div>
 
@@ -317,7 +469,19 @@ function DetailRow({ icon, label }: { icon: React.ReactNode; label: string }) {
   );
 }
 
-function MembersTableView({ members }: { members: MemberProfile[] }) {
+function MembersTableView({
+  members,
+  onView,
+  onAssign,
+  onToggleStatus,
+  onDelete,
+}: {
+  members: MemberProfile[];
+  onView: (member: MemberProfile) => void;
+  onAssign: (member: MemberProfile) => void;
+  onToggleStatus: (member: MemberProfile) => void;
+  onDelete: (member: MemberProfile) => void;
+}) {
   const statusTones: Record<string, Tone> = {
     active: 'success',
     away: 'warning',
@@ -334,13 +498,13 @@ function MembersTableView({ members }: { members: MemberProfile[] }) {
           sortable: true,
           width: '240px',
           render: (row: MemberProfile) => (
-            <div className="flex items-center gap-2">
-              <Avatar name={row.name} size="sm" tone={row.tone} />
+            <button type="button" onClick={() => onView(row)} className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity">
+              <Avatar name={row.name} size="sm" tone={row.tone} src={row.avatar} />
               <div className="min-w-0">
                 <p className="text-body font-medium text-text-primary truncate">{row.name}</p>
                 <p className="text-caption text-text-tertiary truncate">{row.jobTitle}</p>
               </div>
-            </div>
+            </button>
           ),
           sortValue: (row: MemberProfile) => row.name,
         },
@@ -429,9 +593,16 @@ function MembersTableView({ members }: { members: MemberProfile[] }) {
               <Dropdown
                 trigger={<IconButton label="Actions" variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></IconButton>}
                 items={[
-                  { label: 'View Profile', icon: <Eye className="h-4 w-4" />, onClick: () => {} },
-                  { label: 'Edit', icon: <Edit2 className="h-4 w-4" />, onClick: () => {} },
-                  { label: 'Deactivate', icon: <UserX className="h-4 w-4" />, danger: true, onClick: () => {} },
+                  { label: 'View Profile', icon: <Eye className="h-4 w-4" />, onClick: () => onView(row) },
+                  { label: 'Assign Team / Department', icon: <UserPlus className="h-4 w-4" />, onClick: () => onAssign(row) },
+                  { divider: true },
+                  {
+                    label: row.status === 'active' ? 'Deactivate' : 'Reactivate',
+                    icon: <UserX className="h-4 w-4" />,
+                    danger: row.status === 'active',
+                    onClick: () => onToggleStatus(row),
+                  },
+                  { label: 'Remove', icon: <Edit2 className="h-4 w-4" />, danger: true, onClick: () => onDelete(row) },
                 ]}
                 align="right"
               />
@@ -445,5 +616,87 @@ function MembersTableView({ members }: { members: MemberProfile[] }) {
       stickyHeader
       maxHeight="600px"
     />
+  );
+}
+
+function AssignMemberModal({ user, onClose }: { user: UserResponse; onClose: () => void }) {
+  const wsId = useWorkspaceId();
+  const { toast } = useToast();
+  const { data: departments } = useDepartmentsList();
+  const { data: workspaceTeams } = useWorkspaceTeams(wsId || undefined);
+  const updateUser = useUpdateUser();
+  const assignRoles = useAssignRoles();
+  const [deptId, setDeptId] = useState<string>(user.departmentId ?? '');
+  const [teamId, setTeamId] = useState<string>(user.teamId ?? '');
+  const [role, setRole] = useState<RoleName>(user.role);
+  const [saving, setSaving] = useState(false);
+
+  const { data: deptTeams } = useTeamsByDepartment(wsId, deptId || undefined);
+
+  const availableTeams = deptId
+    ? deptTeams ?? (workspaceTeams ?? []).filter((t) => t.departmentId === deptId)
+    : workspaceTeams ?? [];
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (role && role !== user.role) {
+        await assignRoles.mutateAsync({ id: user.id, data: { roles: [role] } });
+      }
+      await updateUser.mutateAsync({
+        id: user.id,
+        data: {
+          departmentId: deptId || null,
+          ...(teamId ? { teamId } : { removeTeam: true }),
+        },
+      });
+      toast({ title: 'Member updated', tone: 'success' });
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update member';
+      toast({ title: msg, tone: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Assign ${user.firstName} ${user.lastName}`} size="sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <Select
+            label="Department"
+            value={deptId}
+            onChange={(e) => { setDeptId(e.target.value); setTeamId(''); }}
+            options={[
+              { value: '', label: 'Not Assigned' },
+              ...(departments ?? []).map((d) => ({ value: d.id, label: d.name })),
+            ]}
+          />
+          <Select
+            label="Team"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            options={[
+              { value: '', label: 'Not Assigned' },
+              ...availableTeams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+          />
+          <Select
+            label="Role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as RoleName)}
+            options={ROLE_OPTIONS}
+          />
+          <p className="text-caption text-text-tertiary">
+            Selecting a department updates the available team options accordingly.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-subtle">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} loading={saving}>Save</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

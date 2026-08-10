@@ -103,7 +103,6 @@ public class TeamController {
                 teamService.listByDepartment(workspaceId, departmentId)
         );
     }
-
     @GetMapping("/{teamId}/details")
     @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TEAM_READ')")
     @Operation(
@@ -169,6 +168,52 @@ public class TeamController {
             @PathVariable UUID teamId
     ) {
         teamService.delete(workspaceId, departmentId, teamId);
+    }
+
+    @PutMapping("/{teamId}/restore")
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TEAM_UPDATE')")
+    @Operation(
+            summary = "Restore an archived team",
+            security = @SecurityRequirement(name = "bearer"),
+            description = "Restores an archived team back to ACTIVE status.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Team restored", content = @Content(schema = @Schema(implementation = com.trio.backend.common.ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User without permission"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Team not found")
+    })
+    public ApiResponse<TeamResponse> restore(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId,
+            @PathVariable UUID teamId
+    ) {
+        return ApiResponse.success(
+                "Team restored successfully.",
+                teamService.restore(workspaceId, departmentId, teamId)
+        );
+    }
+
+    @DeleteMapping("/{teamId}/permanent")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@workspaceAuth.canPermanentlyDeleteTeam(#workspaceId, #teamId, authentication)")
+    @Operation(
+            summary = "Permanently delete a team",
+            security = @SecurityRequirement(name = "bearer"),
+            description = "Permanently removes a team from the database. This is irreversible. " +
+                    "Only a Workspace Admin/Owner or the manager of the team is allowed.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Team permanently deleted"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User without permission"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Team not found")
+    })
+    public void deletePermanently(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId,
+            @PathVariable UUID teamId
+    ) {
+        teamService.deletePermanently(workspaceId, departmentId, teamId);
     }
 }
 

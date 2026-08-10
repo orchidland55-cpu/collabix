@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -39,6 +40,28 @@ public class HandoverEntryResponse {
     private HandoverEntry.HandoverStatus status;
 
     private LocalDateTime dueDate;
+
+    // ==================== Daily report fields ====================
+
+    private HandoverEntry.Shift shift;
+
+    private LocalDate entryDate;
+
+    private String completedTasks;
+
+    private String currentProgress;
+
+    private String pendingTasks;
+
+    private String blockers;
+
+    private String importantNotes;
+
+    private String estimatedRemainingWork;
+
+    private String mood;
+
+    private LocalDateTime submittedAt;
 
     private LocalDateTime sentAt;
 

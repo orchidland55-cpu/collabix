@@ -17,10 +17,16 @@ public interface TeamService {
 
     List<TeamSummaryResponse> listByDepartment(UUID workspaceId, UUID departmentId);
 
+    List<TeamSummaryResponse> listByWorkspace(UUID workspaceId);
+
     TeamDetailsResponse getDetails(UUID workspaceId, UUID departmentId, UUID teamId);
 
     TeamResponse update(UUID workspaceId, UUID departmentId, UUID teamId, UpdateTeamRequest request);
 
     void delete(UUID workspaceId, UUID departmentId, UUID teamId);
+
+    void deletePermanently(UUID workspaceId, UUID departmentId, UUID teamId);
+
+    TeamResponse restore(UUID workspaceId, UUID departmentId, UUID teamId);
 }
 

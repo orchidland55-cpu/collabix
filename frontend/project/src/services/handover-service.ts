@@ -4,7 +4,8 @@ import type { PageResponse } from '../types/api';
 /* ---------- DTOs (mirroring backend) ---------- */
 
 export type HandoverPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-export type HandoverStatus = 'DRAFT' | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'ARCHIVED';
+export type HandoverShift = 'MORNING' | 'EVENING';
+export type HandoverStatus = 'DRAFT' | 'SUBMITTED' | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'ARCHIVED';
 
 export interface UserSummary {
   id: string;
@@ -20,12 +21,22 @@ export interface HandoverEntryResponse {
   projectId: string;
   taskId?: string;
   sender: UserSummary;
-  receiver: UserSummary;
-  title: string;
-  content: string;
+  receiver?: UserSummary;
+  title?: string;
+  content?: string;
   priority: HandoverPriority;
   status: HandoverStatus;
   dueDate?: string;
+  shift?: HandoverShift;
+  entryDate?: string;
+  completedTasks?: string;
+  currentProgress?: string;
+  pendingTasks?: string;
+  blockers?: string;
+  importantNotes?: string;
+  estimatedRemainingWork?: string;
+  mood?: string;
+  submittedAt?: string;
   sentAt?: string;
   acceptedAt?: string;
   rejectedAt?: string;
@@ -39,11 +50,20 @@ export interface CreateHandoverEntryRequest {
   departmentId: string;
   projectId: string;
   taskId?: string;
-  receiverId: string;
-  title: string;
-  content: string;
-  priority: HandoverPriority;
+  receiverId?: string;
+  title?: string;
+  content?: string;
+  priority?: HandoverPriority;
   dueDate?: string;
+  shift?: HandoverShift;
+  entryDate?: string;
+  completedTasks?: string;
+  currentProgress?: string;
+  pendingTasks?: string;
+  blockers?: string;
+  importantNotes?: string;
+  estimatedRemainingWork?: string;
+  mood?: string;
 }
 
 export interface UpdateHandoverEntryRequest {
@@ -53,6 +73,15 @@ export interface UpdateHandoverEntryRequest {
   content?: string;
   priority?: HandoverPriority;
   dueDate?: string;
+  shift?: HandoverShift;
+  entryDate?: string;
+  completedTasks?: string;
+  currentProgress?: string;
+  pendingTasks?: string;
+  blockers?: string;
+  importantNotes?: string;
+  estimatedRemainingWork?: string;
+  mood?: string;
 }
 
 export interface HandoverStatusUpdateRequest {
@@ -118,6 +147,11 @@ export interface HandoverJournalResponse {
   departmentId: string;
   projectId: string;
   journalDate: string;
+  shift?: HandoverShift;
+  journalVersion?: number;
+  generatedBy?: string;
+  departmentsIncluded?: string;
+  entriesCount?: number;
   generatedSummary: string;
   mainDoneWork: string;
   mainRemainingWork: string;
@@ -142,6 +176,8 @@ export interface HandoverAIGenerateRequest {
   workspaceId: string;
   departmentId: string;
   projectId: string;
+  date?: string;
+  shift?: HandoverShift;
 }
 
 export interface HandoverAIEditRequest {
@@ -164,6 +200,10 @@ export interface HandoverAIResponse {
   departmentId: string;
   projectId: string;
   journalDate: string;
+  shift?: HandoverShift;
+  journalVersion?: number;
+  departmentsIncluded?: string;
+  entriesCount?: number;
   executiveSummary: string;
   completedWork: string;
   pendingWork: string;
@@ -220,6 +260,25 @@ export function handoverEntryService(workspaceId: string) {
       return apiClient.get<PageResponse<HandoverEntryResponse>>(`${base}/sent${qs ? `?${qs}` : ''}`);
     },
 
+    myEntries: (params?: {
+      status?: string;
+      shift?: string;
+      entryDate?: string;
+      search?: string;
+      page?: number;
+      size?: number;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set('status', params.status);
+      if (params?.shift) q.set('shift', params.shift);
+      if (params?.entryDate) q.set('entryDate', params.entryDate);
+      if (params?.search) q.set('search', params.search);
+      if (params?.page != null) q.set('page', String(params.page));
+      if (params?.size != null) q.set('size', String(params.size));
+      const qs = q.toString();
+      return apiClient.get<PageResponse<HandoverEntryResponse>>(`${base}/my-entries${qs ? `?${qs}` : ''}`);
+    },
+
     getById: (entryId: string) =>
       apiClient.get<HandoverEntryResponse>(`${base}/${entryId}`),
 
@@ -234,6 +293,9 @@ export function handoverEntryService(workspaceId: string) {
 
     send: (entryId: string, data?: HandoverStatusUpdateRequest) =>
       apiClient.post<HandoverEntryResponse>(`${base}/${entryId}/send`, data),
+
+    submit: (entryId: string, data?: HandoverStatusUpdateRequest) =>
+      apiClient.post<HandoverEntryResponse>(`${base}/${entryId}/submit`, data),
 
     accept: (entryId: string, data?: HandoverStatusUpdateRequest) =>
       apiClient.post<HandoverEntryResponse>(`${base}/${entryId}/accept`, data),
@@ -275,6 +337,7 @@ export function handoverEntryService(workspaceId: string) {
 
 /**
  * Handover journal REST API (nested under project).
+ * @deprecated Use {@link handoverJournalAccessService} (department-scoped) for reads.
  */
 export function handoverJournalService(workspaceId: string, departmentId: string, projectId: string) {
   const base = `/workspaces/${workspaceId}/departments/${departmentId}/projects/${projectId}/handover-logs`;
@@ -298,6 +361,39 @@ export function handoverJournalService(workspaceId: string, departmentId: string
 
     delete: (journalId: string) =>
       apiClient.delete<void>(`${base}/${journalId}`),
+  };
+}
+
+/**
+ * Department-scoped handover journal service available to every workspace role.
+ * The backend auto-scopes managers/members to their own department and returns 403
+ * on cross-department reads.
+ */
+export function handoverJournalAccessService(workspaceId: string) {
+  const base = `/workspaces/${workspaceId}/handover-journals`;
+
+  return {
+    list: (params?: {
+      departmentId?: string;
+      projectId?: string;
+      shift?: string;
+      date?: string;
+      page?: number;
+      size?: number;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.departmentId) q.set('departmentId', params.departmentId);
+      if (params?.projectId) q.set('projectId', params.projectId);
+      if (params?.shift) q.set('shift', params.shift);
+      if (params?.date) q.set('date', params.date);
+      if (params?.page != null) q.set('page', String(params.page));
+      if (params?.size != null) q.set('size', String(params.size));
+      const qs = q.toString();
+      return apiClient.get<PageResponse<HandoverJournalResponse>>(`${base}${qs ? `?${qs}` : ''}`);
+    },
+
+    getById: (journalId: string) =>
+      apiClient.get<HandoverJournalResponse>(`${base}/${journalId}`),
   };
 }
 

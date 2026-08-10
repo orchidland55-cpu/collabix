@@ -4,6 +4,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 /**
  * Request de updated of a Team.
  *
@@ -18,5 +20,17 @@ public class UpdateTeamRequest {
 
     @Size(max = 500)
     private String description;
+
+    /**
+     * ID of the user manager of the team. When non-null, the manager is
+     * reassigned. Null leaves the current manager unchanged.
+     */
+    private UUID managerId;
+
+    /**
+     * When {@code true}, removes the team manager (sets it back to
+     * "Unassigned"). Takes precedence over {@link #managerId}.
+     */
+    private Boolean clearManager;
 }
 

@@ -236,7 +236,7 @@ export function HandoverDetailPage({ entryId, onBack }: { entryId: string; onBac
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetaBox label="Sender" value={`${entry.sender.firstName} ${entry.sender.lastName}`} sub={entry.sender.email} />
-        <MetaBox label="Receiver" value={`${entry.receiver.firstName} ${entry.receiver.lastName}`} sub={entry.receiver.email} />
+        <MetaBox label="Receiver" value={entry.receiver ? `${entry.receiver.firstName} ${entry.receiver.lastName}` : '—'} sub={entry.receiver?.email} />
         <MetaBox label="Due date" value={formatDate(entry.dueDate)} />
         <MetaBox label="Project" value={entry.projectId} sub={`Created ${formatDate(entry.createdAt)}`} />
       </div>

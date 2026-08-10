@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   handoverEntryService,
   handoverJournalService,
+  handoverJournalAccessService,
   handoverAIService,
   type CreateHandoverEntryRequest,
   type UpdateHandoverEntryRequest,
@@ -26,6 +27,7 @@ const handoverKeys = {
     detail: (wsId: string, id: string) => ['handover', 'entries', wsId, id] as const,
     inbox: (wsId: string) => ['handover', 'inbox', wsId] as const,
     sent: (wsId: string) => ['handover', 'sent', wsId] as const,
+    myEntries: (wsId: string) => ['handover', 'my-entries', wsId] as const,
     comments: (wsId: string, id: string) => ['handover', 'comments', wsId, id] as const,
     attachments: (wsId: string, id: string) => ['handover', 'attachments', wsId, id] as const,
     timeline: (wsId: string, id: string) => ['handover', 'timeline', wsId, id] as const,
@@ -35,6 +37,8 @@ const handoverKeys = {
       ['handover', 'journals', wsId, deptId, projId] as const,
     detail: (wsId: string, deptId: string, projId: string, id: string) =>
       ['handover', 'journals', wsId, deptId, projId, id] as const,
+    access: (wsId: string) => ['handover', 'journals', 'accessible', wsId] as const,
+    accessDetail: (wsId: string, id: string) => ['handover', 'journals', 'accessible', wsId, id] as const,
   },
 };
 
@@ -124,9 +128,22 @@ export function useHandoverSent(wsId: string | undefined, page?: number, size?: 
   });
 }
 
+export function useMyHandoverEntries(
+  wsId: string | undefined,
+  params?: { status?: string; shift?: string; entryDate?: string; search?: string; page?: number; size?: number },
+) {
+  const svc = handoverEntryService(wsId ?? '');
+
+  return useQuery<PageResponse<HandoverEntryResponse>>({
+    queryKey: [...handoverKeys.entries.myEntries(wsId ?? ''), params],
+    queryFn: () => svc.myEntries(params),
+    enabled: !!wsId,
+  });
+}
+
 /* ========== Status transition mutations ========== */
 
-function useEntryAction(wsId: string, action: 'send' | 'accept' | 'reject' | 'complete' | 'archive') {
+function useEntryAction(wsId: string, action: 'send' | 'submit' | 'accept' | 'reject' | 'complete' | 'archive') {
   const qc = useQueryClient();
   const svc = handoverEntryService(wsId);
 
@@ -137,12 +154,17 @@ function useEntryAction(wsId: string, action: 'send' | 'accept' | 'reject' | 'co
       qc.invalidateQueries({ queryKey: handoverKeys.entries.all(wsId) });
       qc.invalidateQueries({ queryKey: handoverKeys.entries.inbox(wsId) });
       qc.invalidateQueries({ queryKey: handoverKeys.entries.sent(wsId) });
+      qc.invalidateQueries({ queryKey: handoverKeys.entries.myEntries(wsId) });
     },
   });
 }
 
 export function useSendHandover(wsId?: string) {
   return useEntryAction(wsId ?? '', 'send');
+}
+
+export function useSubmitHandover(wsId?: string) {
+  return useEntryAction(wsId ?? '', 'submit');
 }
 
 export function useAcceptHandover(wsId?: string) {
@@ -341,15 +363,52 @@ export function useDeleteHandoverJournal(wsId: string, deptId?: string, projId?:
   });
 }
 
+/* ========== Accessible (department-scoped) Journal Hooks ========== */
+
+export interface AccessibleJournalParams {
+  departmentId?: string;
+  projectId?: string;
+  shift?: string;
+  date?: string;
+  page?: number;
+  size?: number;
+}
+
+export function useAccessibleHandoverJournals(wsId: string | undefined, params?: AccessibleJournalParams) {
+  const svc = handoverJournalAccessService(wsId ?? '');
+
+  return useQuery<PageResponse<HandoverJournalResponse>>({
+    queryKey: [...handoverKeys.journals.access(wsId ?? ''), params] as const,
+    queryFn: () => svc.list(params),
+    enabled: !!wsId,
+  });
+}
+
+export function useAccessibleHandoverJournal(wsId: string | undefined, journalId: string | undefined) {
+  const svc = handoverJournalAccessService(wsId ?? '');
+
+  return useQuery<HandoverJournalResponse>({
+    queryKey: handoverKeys.journals.accessDetail(wsId ?? '', journalId ?? ''),
+    queryFn: () => svc.getById(journalId!),
+    enabled: !!wsId && !!journalId,
+  });
+}
+
 /* ========== AI Handover Hooks ========== */
 
 function invalidateJournals(qc: ReturnType<typeof useQueryClient>, wsId?: string, deptId?: string, projId?: string, journalId?: string) {
+  if (wsId) {
+    qc.invalidateQueries({ queryKey: handoverKeys.journals.access(wsId) });
+    if (journalId) {
+      qc.invalidateQueries({ queryKey: handoverKeys.journals.accessDetail(wsId, journalId) });
+    }
+  }
   if (wsId && deptId && projId) {
     qc.invalidateQueries({ queryKey: handoverKeys.journals.all(wsId, deptId, projId) });
     if (journalId) {
       qc.invalidateQueries({ queryKey: handoverKeys.journals.detail(wsId, deptId, projId, journalId) });
     }
-  } else {
+  } else if (wsId) {
     qc.invalidateQueries({ queryKey: ['handover', 'journals'] });
   }
 }

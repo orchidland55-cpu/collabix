@@ -18,6 +18,8 @@ public class TeamResponse {
 
     private UUID departmentId;
 
+    private String departmentName;
+
     private String name;
 
     private String description;
@@ -29,5 +31,9 @@ public class TeamResponse {
     private Instant updatedAt;
 
     private Long memberCount;
+
+    private UUID managerId;
+
+    private String managerName;
 }
 

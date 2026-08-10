@@ -7,6 +7,7 @@ import com.trio.backend.ai.service.AIOrchestratorService;
 import com.trio.backend.dto.ai.HandoverAIEditRequest;
 import com.trio.backend.dto.ai.HandoverAIResponse;
 import com.trio.backend.entity.HandoverJournal;
+import com.trio.backend.entity.HandoverEntry;
 import com.trio.backend.entity.Project;
 import com.trio.backend.exception.BadRequestException;
 import com.trio.backend.exception.ResourceNotFoundException;
@@ -21,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -40,16 +42,24 @@ public class HandoverAIServiceImpl implements HandoverAIService {
 
     @Override
     public HandoverAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId) {
+        return generate(workspaceId, departmentId, projectId, LocalDate.now(), null);
+    }
+
+    @Override
+    public HandoverAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId,
+                                       LocalDate date, HandoverEntry.Shift shift) {
         UUID userId = support.currentUserId();
         support.assertActiveWorkspaceMember(workspaceId, userId);
         if (!support.isWorkspaceAdminOrOwner(workspaceId, userId)) {
             throw new com.trio.backend.exception.ForbiddenException("You do not have permission for this operation.");
         }
 
-        Map<String, Object> collectedData = handoverDataCollector.collect(workspaceId, departmentId, projectId);
+        Map<String, Object> collectedData = handoverDataCollector.collect(workspaceId, departmentId, projectId, date, shift);
 
         Integer totalHandovers = (Integer) collectedData.get("totalHandovers");
-        if (totalHandovers == null || totalHandovers == 0) {
+        Integer submittedCount = (Integer) collectedData.get("submittedHandoverEntryCount");
+        if ((totalHandovers == null || totalHandovers == 0)
+                && (submittedCount == null || submittedCount == 0)) {
             throw new BadRequestException("No handovers found for this project. Cannot generate AI journal.");
         }
 
@@ -66,11 +76,17 @@ public class HandoverAIServiceImpl implements HandoverAIService {
         AIExecutionResponse aiResponse = orchestratorService.execute(executionRequest);
         long executionTime = System.currentTimeMillis() - start;
 
-        return saveJournal(workspaceId, departmentId, projectId, userId, collectedData, aiResponse, executionTime);
+        return saveJournal(workspaceId, departmentId, projectId, userId, collectedData, aiResponse, executionTime, date, shift);
     }
 
     @Override
     public HandoverAIResponse regenerate(UUID workspaceId, UUID departmentId, UUID projectId, UUID journalId) {
+        return regenerate(workspaceId, departmentId, projectId, journalId, LocalDate.now(), null);
+    }
+
+    @Override
+    public HandoverAIResponse regenerate(UUID workspaceId, UUID departmentId, UUID projectId, UUID journalId,
+                                         LocalDate date, HandoverEntry.Shift shift) {
         UUID userId = support.currentUserId();
         support.assertActiveWorkspaceMember(workspaceId, userId);
         if (!support.isWorkspaceAdminOrOwner(workspaceId, userId)) {
@@ -80,7 +96,7 @@ public class HandoverAIServiceImpl implements HandoverAIService {
         handoverJournalRepository.findByIdAndWorkspace(journalId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Handover journal not found"));
 
-        return generate(workspaceId, departmentId, projectId);
+        return generate(workspaceId, departmentId, projectId, date, shift);
     }
 
     @Override
@@ -140,15 +156,34 @@ public class HandoverAIServiceImpl implements HandoverAIService {
 
     private HandoverAIResponse saveJournal(UUID workspaceId, UUID departmentId, UUID projectId,
                                             UUID userId, Map<String, Object> collectedData,
-                                            AIExecutionResponse aiResponse, long executionTime) {
+                                            AIExecutionResponse aiResponse, long executionTime,
+                                            LocalDate date, HandoverEntry.Shift shift) {
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
 
-        HandoverJournal journal = new HandoverJournal();
-        journal.setWorkspace(project.getDepartment().getWorkspace());
-        journal.setDepartment(project.getDepartment());
-        journal.setProject(project);
-        journal.setJournalDate(LocalDateTime.now().toLocalDate().atStartOfDay());
+        HandoverJournal journal = handoverJournalRepository
+                .findActiveByProjectIdAndJournalDate(
+                        projectId, date.atStartOfDay(), date.atStartOfDay().plusDays(1))
+                .orElseGet(() -> {
+                    HandoverJournal j = new HandoverJournal();
+                    j.setWorkspace(project.getDepartment().getWorkspace());
+                    j.setDepartment(project.getDepartment());
+                    j.setProject(project);
+                    j.setJournalDate(date.atStartOfDay());
+                    j.setJournalVersion(1);
+                    return j;
+                });
+
+        if (journal.getJournalVersion() == null) {
+            journal.setJournalVersion(1);
+        } else if (journal.getId() != null) {
+            journal.setJournalVersion(journal.getJournalVersion() + 1);
+        }
+
+        journal.setShift(shift);
+        journal.setGeneratedBy("Gemini");
+        journal.setDepartmentsIncluded(project.getDepartment().getName());
+        journal.setEntriesCount(longValue(collectedData, "submittedHandoverEntryCount"));
         journal.setGeneratedSummary(aiResponse.getResponse());
         journal.setMainDoneWork(aiResponse.getResponse());
         journal.setMainRemainingWork(aiResponse.getResponse());

@@ -1,29 +1,31 @@
+import { useState } from 'react';
 import {
   X,
   Users,
-  CheckSquare,
-  TrendingUp,
-  Clock,
-  UserPlus,
   Shield,
-  ArrowRightLeft,
   Archive,
-  MoreHorizontal,
-  Calendar,
-  Activity as ActivityIcon,
-  FolderKanban,
+  RotateCcw,
+  AlertTriangle,
+  Trash2,
+  UserPlus,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
-import { Progress } from '../../components/ui/Progress';
 import { IconButton } from '../../components/ui/IconButton';
 import { Button } from '../../components/ui/Button';
-import { Timeline } from '../../components/ui/Timeline';
+import { Modal } from '../../components/ui/Modal';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { LoadingOverlay } from '../../components/ui/Skeleton';
 import { cn } from '../../lib/cn';
+import { useToast } from '../../components/ui/Toast';
+import { useWorkspaceId } from '../../hooks/useWorkspaceId';
+import { useWorkspaceUsers, useAssignMemberToTeam } from '../../services/team-hooks';
+import { UserStatus } from '../../types';
+import type { UserResponse } from '../../types';
 import type { Team } from './types';
-import { statusBadge, availabilityMeta, projectStatusMeta } from './types';
+import { statusBadge } from './types';
 
 const statToneBg: Record<string, string> = {
   accent: 'bg-accent-50 text-accent-600 dark:bg-accent-100 dark:text-accent-300',
@@ -33,19 +35,27 @@ const statToneBg: Record<string, string> = {
   neutral: 'bg-surface-2 text-text-secondary',
 };
 
-function productivityTone(v: number): 'success' | 'info' | 'warning' | 'danger' {
-  return v >= 80 ? 'success' : v >= 65 ? 'info' : v >= 45 ? 'warning' : 'danger';
-}
-
 interface Props {
   team: Team;
   onClose: () => void;
-  onAction: (kind: 'edit' | 'archive' | 'assign' | 'change-manager' | 'move', team: Team) => void;
+  onAction: (kind: 'edit' | 'archive' | 'restore' | 'change-manager' | 'delete', team: Team) => void;
 }
 
 export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
   const status = statusBadge[team.status];
-  const avgWorkload = Math.round(team.members.reduce((a, m) => a + m.workload, 0) / Math.max(team.members.length, 1));
+  const wsId = useWorkspaceId();
+  const { data: users, isLoading: usersLoading } = useWorkspaceUsers(wsId);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+
+  const memberRows = (users ?? [])
+    .filter((u) => u.teamId === team.id)
+    .map((u) => ({
+      id: u.id,
+      name: `${u.firstName} ${u.lastName}`.trim(),
+      role: u.role,
+      email: u.email,
+      avatar: u.profilePicture,
+    }));
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -58,7 +68,7 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
               <h2 className="text-page font-semibold text-text-primary truncate">{team.name}</h2>
               <Badge tone={status.tone} variant="soft" dot>{status.label}</Badge>
             </div>
-            <p className="mt-0.5 text-caption text-text-tertiary truncate">{team.department} · Created {team.createdAt}</p>
+            <p className="mt-0.5 text-caption text-text-tertiary truncate">{team.department || 'No department'} · Created {team.createdAt || 'No data'}</p>
           </div>
           <IconButton label="Close" variant="ghost" className="h-8 w-8 shrink-0" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -70,16 +80,16 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
           {/* General info */}
           <section>
             <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">General Information</h3>
-            <p className="text-body text-text-secondary leading-relaxed">{team.description}</p>
+            <p className="text-body text-text-secondary leading-relaxed">{team.description || 'No description provided.'}</p>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
                 <p className="text-2xs text-text-tertiary">Department</p>
-                <p className="text-caption font-medium text-text-primary">{team.department}</p>
+                <p className="text-caption font-medium text-text-primary">{team.department || 'No data'}</p>
               </div>
               <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
                 <p className="text-2xs text-text-tertiary">Manager</p>
                 <div className="flex items-center gap-1.5">
-                  <Avatar name={team.manager} tone={team.managerTone} />
+                  <Avatar name={team.manager} />
                   <span className="text-caption font-medium text-text-primary truncate">{team.manager}</span>
                 </div>
               </div>
@@ -91,118 +101,150 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
             <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">Statistics</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <StatTile icon={Users} tone="accent" label="Members" value={team.memberCount} />
-              <StatTile icon={FolderKanban} tone="info" label="Projects" value={team.activeProjects} />
-              <StatTile icon={CheckSquare} tone="success" label="Completed" value={team.completedTasks} />
-              <StatTile icon={Clock} tone="warning" label="Open Tasks" value={team.openTasks} />
-              <StatTile icon={TrendingUp} tone="neutral" label="Completion" value={`${team.completionRate}%`} />
-              <StatTile icon={ActivityIcon} tone="info" label="Avg Workload" value={`${avgWorkload}%`} />
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-2xs font-medium text-text-tertiary">Completion Rate</span>
-                  <span className="text-2xs font-semibold text-text-primary">{team.completionRate}%</span>
-                </div>
-                <Progress value={team.completionRate} tone={productivityTone(team.completionRate)} />
-              </div>
-              <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-2xs font-medium text-text-tertiary">Current Workload</span>
-                  <span className="text-2xs font-semibold text-text-primary">{team.workload}%</span>
-                </div>
-                <Progress value={team.workload} tone={productivityTone(team.workload)} />
-              </div>
+              <StatTile icon={Shield} tone="info" label="Created" value={team.createdAt || 'No data'} />
             </div>
           </section>
 
           {/* Member list */}
           <section>
             <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">Members</h3>
-            <div className="flex flex-col gap-2">
-              {team.members.map((m) => {
-                const avail = availabilityMeta[m.availability];
-                return (
+            {usersLoading ? (
+              <Card variant="inner">
+                <CardBody>
+                  <LoadingOverlay label="Loading members..." />
+                </CardBody>
+              </Card>
+            ) : memberRows.length === 0 ? (
+              <Card variant="inner">
+                <CardBody className="py-8">
+                  <EmptyState
+                    icon={<Users className="h-5 w-5" />}
+                    title="No members"
+                    description="This team has no members assigned yet."
+                  />
+                </CardBody>
+              </Card>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {memberRows.map((m) => (
                   <div key={m.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
-                    <div className="relative">
-                      <Avatar name={m.name} tone={m.tone} />
-                      <span className={cn('absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-surface', m.online ? 'bg-success-500' : 'bg-text-tertiary')} />
-                    </div>
+                    <Avatar name={m.name} src={m.avatar} />
                     <div className="min-w-0 flex-1">
                       <p className="text-body font-medium text-text-primary truncate">{m.name}</p>
-                      <p className="text-2xs text-text-tertiary">{m.role} · {m.position}</p>
+                      <p className="text-2xs text-text-tertiary truncate">{m.role} · {m.email}</p>
                     </div>
-                    <div className="hidden sm:flex flex-col items-end">
-                      <div className="flex items-center gap-1.5">
-                        <span className={cn('h-2 w-2 rounded-full', avail.dot)} />
-                        <span className="text-2xs text-text-tertiary">{avail.label}</span>
-                      </div>
-                      <div className="mt-0.5 w-20">
-                        <Progress value={m.workload} tone={productivityTone(m.workload)} />
-                      </div>
-                    </div>
-                    <MemberActionMenu />
                   </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Projects */}
-          <section>
-            <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">Projects</h3>
-            <div className="flex flex-col gap-2">
-              {team.projects.map((p) => {
-                const ps = projectStatusMeta[p.status];
-                return (
-                  <div key={p.id} className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-body font-medium text-text-primary truncate">{p.name}</p>
-                      <Badge tone={ps.tone} variant="soft">{ps.label}</Badge>
-                    </div>
-                    <div className="mt-2 flex items-center gap-3">
-                      <Progress value={p.progress} tone={productivityTone(p.progress)} />
-                      <span className="text-2xs font-medium text-text-tertiary shrink-0">{p.progress}%</span>
-                    </div>
-                    <p className="mt-1.5 flex items-center gap-1 text-2xs text-text-tertiary">
-                      <Calendar className="h-3 w-3" /> {p.deadline}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Recent activity */}
-          <section>
-            <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">Recent Activity</h3>
-            <Card variant="inner">
-              <CardBody>
-                <Timeline items={team.activity.map((a) => ({ id: a.id, icon: <a.icon />, tone: a.tone, title: a.title, actor: a.actor, timestamp: a.timestamp }))} />
-              </CardBody>
-            </Card>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 
         {/* Footer actions */}
         <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-5 py-3">
-          <Button variant="ghost" onClick={() => onAction('archive', team)} leftIcon={<Archive className="h-4 w-4" />}>
-            Archive
-          </Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => onAction('assign', team)} leftIcon={<UserPlus className="h-4 w-4" />}>
-              Assign
+            <Button
+              variant="ghost"
+              onClick={() => onAction(team.status === 'archived' ? 'restore' : 'archive', team)}
+              leftIcon={team.status === 'archived' ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+            >
+              {team.status === 'archived' ? 'Restore' : 'Archive'}
             </Button>
-            <Button variant="outline" onClick={() => onAction('move', team)} leftIcon={<ArrowRightLeft className="h-4 w-4" />}>
-              Move
+            <Button variant="danger" onClick={() => onAction('delete', team)} leftIcon={<Trash2 className="h-4 w-4" />}>
+              Delete
             </Button>
-            <Button onClick={() => onAction('edit', team)} leftIcon={<Shield className="h-4 w-4" />}>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAddMemberOpen(true)}
+              leftIcon={<UserPlus className="h-4 w-4" />}
+            >
+              Add Member
+            </Button>
+            <Button variant="outline" onClick={() => onAction('change-manager', team)} leftIcon={<Shield className="h-4 w-4" />}>
+              Change Manager
+            </Button>
+            <Button onClick={() => onAction('edit', team)} leftIcon={<AlertTriangle className="h-4 w-4" />}>
               Edit
             </Button>
           </div>
         </div>
       </div>
+      {addMemberOpen && <AddMemberModal team={team} onClose={() => setAddMemberOpen(false)} />}
     </div>,
     document.body,
+  );
+}
+
+function AddMemberModal({ team, onClose }: { team: Team; onClose: () => void }) {
+  const wsId = useWorkspaceId();
+  const { data: users, isLoading } = useWorkspaceUsers(wsId);
+  const addMember = useAssignMemberToTeam(wsId);
+  const { toast } = useToast();
+  const [selectedId, setSelectedId] = useState<string>('');
+
+  const candidates = (users ?? [])
+    .filter((u) => u.status === UserStatus.ACTIVE && u.teamId !== team.id);
+
+  const handleAdd = async () => {
+    if (!selectedId) return;
+    try {
+      await addMember.mutateAsync({ userId: selectedId, teamId: team.id });
+      toast({ title: 'Member added to team', tone: 'success' });
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add member';
+      toast({ title: msg, tone: 'danger' });
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Add member to ${team.name}`} size="sm">
+      <div className="flex flex-col gap-3">
+        {isLoading ? (
+          <LoadingOverlay label="Loading members..." />
+        ) : candidates.length === 0 ? (
+          <EmptyState
+            icon={<Users className="h-5 w-5" />}
+            title="No members to add"
+            description="All active workspace members are already assigned to this team."
+          />
+        ) : (
+          <div className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1">
+            {candidates.map((u: UserResponse) => (
+              <MemberOption key={u.id} user={u} selected={selectedId === u.id} onSelect={() => setSelectedId(u.id)} />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mt-5 flex items-center justify-end gap-3 border-t border-border-subtle pt-4">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" onClick={handleAdd} disabled={!selectedId} leftIcon={<UserPlus className="h-4 w-4" />}>
+          Add Member
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function MemberOption({ user, selected, onSelect }: { user: UserResponse; selected: boolean; onSelect: () => void }) {
+  const name = `${user.firstName} ${user.lastName}`.trim();
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+        selected ? 'border-accent-500 bg-accent-50' : 'border-border-subtle bg-surface hover:border-border-default',
+      )}
+    >
+      <Avatar name={name} src={user.profilePicture} />
+      <div className="min-w-0 flex-1">
+        <p className="text-body font-medium text-text-primary truncate">{name}</p>
+        <p className="text-2xs text-text-tertiary truncate">{user.email} · {user.departmentName ?? 'No department'}</p>
+      </div>
+    </button>
   );
 }
 
@@ -214,16 +256,6 @@ function StatTile({ icon: Icon, tone, label, value }: { icon: typeof Users; tone
       </span>
       <p className="mt-2 text-2xs text-text-tertiary">{label}</p>
       <p className="text-body font-semibold text-text-primary">{value}</p>
-    </div>
-  );
-}
-
-function MemberActionMenu() {
-  return (
-    <div className="relative shrink-0">
-      <IconButton label="Member actions" variant="ghost" className="h-7 w-7">
-        <MoreHorizontal className="h-4 w-4" />
-      </IconButton>
     </div>
   );
 }

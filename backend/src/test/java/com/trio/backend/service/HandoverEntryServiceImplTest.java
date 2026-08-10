@@ -134,6 +134,7 @@ class HandoverEntryServiceImplTest {
         exampleResponse = new HandoverEntryResponse();
 
         lenient().when(support.currentUserId()).thenReturn(userId);
+        lenient().when(support.currentUserDepartmentId()).thenReturn(deptId);
         lenient().when(support.userDisplayName(any())).thenReturn("Test User");
     }
 
@@ -180,6 +181,27 @@ class HandoverEntryServiceImplTest {
         when(projectRepository.findByIdAndDepartment_Id(projId, deptId)).thenReturn(Optional.of(project));
 
         assertThrows(ResourceNotFoundException.class,
+                () -> handoverEntryService.create(wsId, request));
+    }
+
+    @Test
+    void createShouldThrowWhenUserIsWorkspaceAdmin() {
+        CreateHandoverEntryRequest request = new CreateHandoverEntryRequest();
+        ReflectionTestUtils.setField(request, "departmentId", deptId);
+        ReflectionTestUtils.setField(request, "projectId", projId);
+        when(support.isWorkspaceAdminOrOwner(wsId, userId)).thenReturn(true);
+
+        assertThrows(ForbiddenException.class,
+                () -> handoverEntryService.create(wsId, request));
+    }
+
+    @Test
+    void createShouldThrowWhenCrossDepartment() {
+        CreateHandoverEntryRequest request = new CreateHandoverEntryRequest();
+        ReflectionTestUtils.setField(request, "departmentId", UUID.randomUUID());
+        ReflectionTestUtils.setField(request, "projectId", projId);
+
+        assertThrows(ForbiddenException.class,
                 () -> handoverEntryService.create(wsId, request));
     }
 
@@ -236,6 +258,7 @@ class HandoverEntryServiceImplTest {
 
     @Test
     void listShouldReturnPaginatedResults() {
+        when(support.isWorkspaceAdminOrOwner(wsId, userId)).thenReturn(true);
         Page<HandoverEntry> page = new PageImpl<>(List.of(exampleEntry));
         when(handoverEntryRepository.search(eq(wsId), isNull(), isNull(), isNull(), any(PageRequest.class)))
                 .thenReturn(page);

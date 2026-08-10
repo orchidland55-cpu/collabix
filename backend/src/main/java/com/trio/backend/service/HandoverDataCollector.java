@@ -28,17 +28,24 @@ public class HandoverDataCollector {
     private final HandoverSupport support;
 
     public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId) {
+        return collect(workspaceId, departmentId, projectId, LocalDate.now(), null);
+    }
+
+    public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId,
+                                       LocalDate reportDate, HandoverEntry.Shift shift) {
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found"));
 
-        LocalDate today = LocalDate.now();
-        LocalDateTime dayStart = today.atStartOfDay();
-        LocalDateTime dayEnd = today.atTime(LocalTime.MAX);
+        LocalDateTime dayStart = reportDate.atStartOfDay();
+        LocalDateTime dayEnd = reportDate.atTime(LocalTime.MAX);
         Instant startInstant = dayStart.atZone(ZoneId.systemDefault()).toInstant();
         Instant endInstant = dayEnd.atZone(ZoneId.systemDefault()).toInstant();
 
         List<HandoverEntry> currentEntries = handoverEntryRepository
                 .findByProjectIdAndCreatedAtBetween(projectId, startInstant, endInstant);
+
+        List<HandoverEntry> submittedEntries = handoverEntryRepository
+                .findSubmittedByDepartmentIdAndEntryDate(workspaceId, departmentId, reportDate, shift);
 
         List<HandoverEntry> pending = filterStatus(currentEntries, HandoverStatus.PENDING);
         List<HandoverEntry> completed = filterStatus(currentEntries, HandoverStatus.COMPLETED);
@@ -58,8 +65,10 @@ public class HandoverDataCollector {
                 .filter(c -> c.getCreatedAt() != null && c.getCreatedAt().isAfter(startInstant))
                 .toList();
 
+        LocalDate previousDay = reportDate.minusDays(1);
         Optional<HandoverJournal> previousJournal = handoverJournalRepository
-                .findByProjectIdAndJournalDateBetween(projectId, today.minusDays(1))
+                .findByProjectIdAndJournalDateBetween(
+                        projectId, previousDay.atStartOfDay(), previousDay.atStartOfDay().plusDays(1))
                 .stream().findFirst();
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -68,7 +77,8 @@ public class HandoverDataCollector {
         data.put("workspaceId", workspaceId);
         data.put("departmentId", departmentId);
         data.put("projectId", projectId);
-        data.put("reportDate", today.toString());
+        data.put("reportDate", reportDate.toString());
+        data.put("shift", shift == null ? null : shift.name());
 
         data.put("totalHandovers", currentEntries.size());
         data.put("pendingHandovers", pending.size());
@@ -83,6 +93,10 @@ public class HandoverDataCollector {
         data.put("rejectedHandoverDetails", formatEntries(rejected));
         data.put("urgentHandoverDetails", formatEntries(urgent));
         data.put("overdueHandoverDetails", formatEntries(overdue));
+
+        data.put("submittedHandoverEntries", submittedEntries.size());
+        data.put("submittedHandoverEntryDetails", formatSubmittedEntries(submittedEntries));
+        data.put("submittedHandoverEntryCount", submittedEntries.size());
 
         data.put("pendingTasks", formatTasks(pendingTasks));
         data.put("completedTasks", formatTasks(completedTasks));
@@ -115,8 +129,29 @@ public class HandoverDataCollector {
                         e.getStatus(), e.getTitle(), e.getPriority(),
                         e.getDueDate() != null ? e.getDueDate().toLocalDate() : "n/a",
                         support.userDisplayName(e.getSender()),
-                        support.userDisplayName(e.getReceiver()),
+                        e.getReceiver() == null ? "n/a" : support.userDisplayName(e.getReceiver()),
                         e.getContent() == null ? "" : e.getContent().replace("\n", " ")))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String formatSubmittedEntries(List<HandoverEntry> entries) {
+        if (entries.isEmpty()) {
+            return "No submitted daily report entries for this department on this day.";
+        }
+        return entries.stream()
+                .map(e -> String.format(
+                        "- [%s] %s (by %s)%s\n  Tasks completed: %s\n  Current progress: %s\n  Pending tasks: %s\n  Blockers: %s\n  Notes: %s\n  Estimate remaining: %s\n  Mood: %s",
+                        e.getStatus(),
+                        e.getShift() == null ? "Daily report" : "Daily report (" + e.getShift() + ")",
+                        support.userDisplayName(e.getSender()),
+                        e.getPriority() == null ? "" : " | priority " + e.getPriority(),
+                        e.getCompletedTasks() == null ? "" : e.getCompletedTasks().replace("\n", " "),
+                        e.getCurrentProgress() == null ? "" : e.getCurrentProgress().replace("\n", " "),
+                        e.getPendingTasks() == null ? "" : e.getPendingTasks().replace("\n", " "),
+                        e.getBlockers() == null ? "" : e.getBlockers().replace("\n", " "),
+                        e.getImportantNotes() == null ? "" : e.getImportantNotes().replace("\n", " "),
+                        e.getEstimatedRemainingWork() == null ? "" : e.getEstimatedRemainingWork(),
+                        e.getMood() == null ? "" : e.getMood()))
                 .collect(Collectors.joining("\n"));
     }
 

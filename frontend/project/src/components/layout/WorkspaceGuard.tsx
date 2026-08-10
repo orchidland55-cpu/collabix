@@ -15,7 +15,7 @@ const WORKSPACE_ROUTES = new Set([
 /** Routes that absolutely require a selected workspace context */
 const WS_DEPENDENT_ROUTES = new Set([
   'workspace', 'workspace-overview', 'projects', 'tasks',
-  'collaboration', 'documents', 'knowledge', 'handover',
+  'collaboration', 'documents', 'knowledge', 'handover', 'handover-entries',
   'notifications', 'reports', 'activity', 'calendar', 'archived-projects',
   'organization', 'departments', 'teams', 'members',
   'settings', 'ai',

@@ -128,4 +128,16 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, TeamMemb
     @Modifying
     @Query("DELETE FROM TeamMember tm WHERE tm.user = :user")
     void deleteAllByUser(@Param("user") User user);
+
+    /**
+     * Permanently removes all memberships of a team.
+     *
+     * <p>Team memberships are genuinely owned by the team and must be removed
+     * before the team row itself is deleted.</p>
+     *
+     * @param teamId the ID of the team
+     */
+    @Modifying
+    @Query("DELETE FROM TeamMember tm WHERE tm.teamMemberId.teamId = :teamId")
+    void deleteAllByTeamId(@Param("teamId") UUID teamId);
 }

@@ -1,10 +1,12 @@
 package com.trio.backend.controller;
 
 import com.trio.backend.common.ApiResponse;
+import com.trio.backend.dto.organisation.team.TeamSummaryResponse;
 import com.trio.backend.dto.workspace.CreateWorkspaceRequest;
 import com.trio.backend.dto.workspace.UpdateWorkspaceRequest;
 import com.trio.backend.dto.workspace.WorkspaceResponse;
 import com.trio.backend.dto.workspace.WorkspaceSummaryResponse;
+import com.trio.backend.service.TeamService;
 import com.trio.backend.service.WorkspaceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -49,6 +51,8 @@ import java.util.UUID;
 public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
+
+    private final TeamService teamService;
 
     /**
      * Creates a nouveau Workspace.
@@ -256,6 +260,24 @@ public class WorkspaceController {
      * @throws ResourceNotFoundException si le Workspace does not exist
      * @throws ForbiddenException si the user n'a pas the permission
      */
+    @GetMapping("/{workspaceId}/teams")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TEAM_READ')")
+    @Operation(summary = "List teams of a Workspace", description = "Returns all teams (active and archived) of the workspace with their department and manager.", security = @SecurityRequirement(name = "bearer"))
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Teams retrieved", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User is not a workspace member")
+    })
+    public ApiResponse<List<TeamSummaryResponse>> listWorkspaceTeams(
+            @Parameter(description = "ID of the workspace", required = true)
+            @PathVariable UUID workspaceId
+    ) {
+        return ApiResponse.success(
+                "Workspace teams retrieved successfully.",
+                teamService.listByWorkspace(workspaceId)
+        );
+    }
+
     @PutMapping("/{workspaceId}/archive")
     @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'WORKSPACE_DELETE')")
     @Operation(summary = "Archive a Workspace", description = "Sets workspace status to ARCHIVED.", security = @SecurityRequirement(name = "bearer"))

@@ -35,7 +35,7 @@ import { useDepartmentDashboard } from '../services/department-hooks';
 import { useWorkspaceTeams } from '../services/team-hooks';
 import { useWorkspaceDocuments } from '../services/document-hooks';
 import { useNotificationsList } from '../services/notification-hooks';
-import { useHandoverJournals } from '../services/handover-hooks';
+import { useAccessibleHandoverJournals } from '../services/handover-hooks';
 import { useAIReportHistory } from '../services/reporting-ai-hooks';
 import { detectDeptType } from '../lib/access';
 import { cn } from '../lib/cn';
@@ -197,7 +197,7 @@ export function WorkspaceOverviewPage() {
   const { data: teams, isLoading: teamsLoading } = useWorkspaceTeams(workspaceId || undefined);
   const { data: documents } = useWorkspaceDocuments(workspaceId);
   const { data: notifPage } = useNotificationsList(workspaceId);
-  const { data: journalPage } = useHandoverJournals(workspaceId, undefined, undefined, 0, 5);
+  const { data: journalPage } = useAccessibleHandoverJournals(workspaceId, { page: 0, size: 5 });
   const { data: reportPage } = useAIReportHistory(workspaceId, 0, 5);
   const { data: userStats } = useUserStatistics();
 
