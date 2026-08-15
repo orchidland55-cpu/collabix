@@ -20,6 +20,7 @@ import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.repository.UserRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
+import com.trio.backend.security.department.DepartmentScopeGuard;
 import com.trio.backend.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -46,13 +48,15 @@ public class ProjectServiceImpl implements ProjectService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final UserRepository userRepository;
     private final ProjectMapper projectMapper;
+    private final DepartmentScopeGuard departmentScopeGuard;
 
     @Override
     public ProjectResponse create(UUID workspaceId, UUID departmentId, CreateProjectRequest request) {
 
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        departmentScopeGuard.assertCanManageProjects(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Department department = departmentRepository.findByIdAndWorkspace_Id(departmentId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found."));
@@ -62,10 +66,13 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         String normalizedName = normalizeName(request.getName());
+        validateProjectDates(request.getStartDate(), request.getEndDate());
 
-        if (projectRepository.existsByDepartment_IdAndName(departmentId, normalizedName)) {
+        if (projectRepository.existsByDepartment_IdAndNameIgnoreCase(departmentId, normalizedName)) {
             throw new ConflictException("Project with this name already exists.");
         }
+
+        request.setName(normalizedName);
 
         Project project = projectMapper.toEntity(request);
         project.setDepartment(department);
@@ -85,14 +92,11 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse getById(UUID workspaceId, UUID departmentId, UUID projectId) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
-        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
-
-        if (project.getStatus() != WorkspaceStatus.ACTIVE) {
-            throw new ResourceNotFoundException("Project not found.");
-        }
+        Project project = findActiveProjectInDepartment(workspaceId, departmentId, projectId);
 
         return projectMapper.toResponse(project);
     }
@@ -101,7 +105,9 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional(readOnly = true)
     public List<ProjectResponse> list(UUID workspaceId, UUID departmentId) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         return projectRepository.findAllByDepartment_IdAndStatus(departmentId, WorkspaceStatus.ACTIVE)
                 .stream()
@@ -113,7 +119,9 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional(readOnly = true)
     public Page<ProjectResponse> listPaginated(UUID workspaceId, UUID departmentId, String search, Pageable pageable) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         if (search != null && !search.isBlank()) {
             return projectRepository.searchByDepartmentIdAndName(departmentId, WorkspaceStatus.ACTIVE, search.trim(), pageable)
@@ -126,9 +134,34 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<ProjectResponse> listAllPaginated(UUID workspaceId, String search, Pageable pageable) {
+
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+
+        // Workspace ADMIN/OWNER may see every department. MANAGER/MEMBER are
+        // automatically scoped to their primary department (never all projects).
+        UUID accessibleDepartmentId = departmentScopeGuard.resolveAccessibleDepartmentId(workspaceId, userId);
+        if (accessibleDepartmentId == null) {
+            if (search != null && !search.isBlank()) {
+                return projectRepository.searchByWorkspaceIdAndName(
+                                workspaceId, WorkspaceStatus.ACTIVE, search.trim(), pageable)
+                        .map(projectMapper::toResponse);
+            }
+            return projectRepository.findAllByWorkspaceIdAndStatus(workspaceId, WorkspaceStatus.ACTIVE, pageable)
+                    .map(projectMapper::toResponse);
+        }
+
+        return listPaginated(workspaceId, accessibleDepartmentId, search, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ProjectResponse> listArchived(UUID workspaceId, UUID departmentId) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         return projectRepository.findAllByDepartment_IdAndStatus(departmentId, WorkspaceStatus.ARCHIVED)
                 .stream()
@@ -141,19 +174,17 @@ public class ProjectServiceImpl implements ProjectService {
 
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        departmentScopeGuard.assertCanManageProjects(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
-        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
+        Project project = findActiveProjectInDepartment(workspaceId, departmentId, projectId);
 
-        if (project.getStatus() != WorkspaceStatus.ACTIVE) {
-            throw new ResourceNotFoundException("Project not found.");
-        }
+        validateProjectDates(request.getStartDate(), request.getEndDate());
 
         if (request.getName() != null) {
             String normalizedName = normalizeName(request.getName());
             if (!normalizedName.equals(normalizeName(project.getName()))
-                    && projectRepository.existsByDepartment_IdAndName(departmentId, normalizedName)) {
+                    && projectRepository.existsByDepartment_IdAndNameIgnoreCase(departmentId, normalizedName)) {
                 throw new ConflictException("Project with this name already exists.");
             }
             request.setName(normalizedName);
@@ -163,8 +194,6 @@ public class ProjectServiceImpl implements ProjectService {
             User manager = userRepository.findById(request.getManagerId())
                     .orElseThrow(() -> new ResourceNotFoundException("Manager not found."));
             project.setManager(manager);
-        } else if (request.getManagerId() == null && request.getName() != null) {
-            project.setManager(null);
         }
 
         projectMapper.updateProject(request, project);
@@ -178,9 +207,9 @@ public class ProjectServiceImpl implements ProjectService {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
         assertWorkspaceAdminOrOwner(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
-        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
+        Project project = findProjectInDepartment(workspaceId, departmentId, projectId);
 
         if (project.getStatus() != WorkspaceStatus.ACTIVE) {
             return;
@@ -195,10 +224,10 @@ public class ProjectServiceImpl implements ProjectService {
 
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        departmentScopeGuard.assertCanManageProjects(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
-        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
+        Project project = findProjectInDepartment(workspaceId, departmentId, projectId);
 
         if (project.getStatus() != WorkspaceStatus.ARCHIVED) {
             throw new BadRequestException("Project is not archived.");
@@ -241,6 +270,29 @@ public class ProjectServiceImpl implements ProjectService {
 
         if (!isAdmin && !isOwner) {
             throw new ForbiddenException("You do not have permission for this operation.");
+        }
+    }
+
+    private Project findActiveProjectInDepartment(UUID workspaceId, UUID departmentId, UUID projectId) {
+        Project project = findProjectInDepartment(workspaceId, departmentId, projectId);
+        if (project.getStatus() != WorkspaceStatus.ACTIVE) {
+            throw new ResourceNotFoundException("Project not found.");
+        }
+        return project;
+    }
+
+    private Project findProjectInDepartment(UUID workspaceId, UUID departmentId, UUID projectId) {
+        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
+        if (!project.getDepartment().getWorkspace().getId().equals(workspaceId)) {
+            throw new ResourceNotFoundException("Project not found.");
+        }
+        return project;
+    }
+
+    private void validateProjectDates(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+            throw new BadRequestException("End date cannot be before start date.");
         }
     }
 

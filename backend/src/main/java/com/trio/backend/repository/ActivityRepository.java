@@ -279,4 +279,22 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
             @Param("workspaceId") UUID workspaceId,
             @Param("status") ActivityStatus status
     );
+
+    @Query(value = """
+            SELECT CAST(a.created_at AS date) AS day, COUNT(*) AS cnt
+            FROM activities a
+            INNER JOIN tasks t ON a.task_id = t.id
+            INNER JOIN projects p ON t.project_id = p.id
+            INNER JOIN departments d ON p.department_id = d.id
+            WHERE d.workspace_id = :workspaceId
+              AND a.status = 'ACTIVE'
+              AND a.created_at >= :from
+              AND a.created_at < :toExclusive
+            GROUP BY CAST(a.created_at AS date)
+            """, nativeQuery = true)
+    List<Object[]> countActiveByWorkspaceIdGroupedByDay(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("from") Instant from,
+            @Param("toExclusive") Instant toExclusive
+    );
 }

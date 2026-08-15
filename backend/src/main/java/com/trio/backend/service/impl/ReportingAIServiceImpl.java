@@ -12,6 +12,9 @@ import com.trio.backend.exception.BadRequestException;
 import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.repository.*;
+import com.trio.backend.enums.AIScopeType;
+import com.trio.backend.security.ai.AIScopeAuthorization;
+import com.trio.backend.util.AIScopeUtils;
 import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.service.ReportingAIService;
 import com.trio.backend.service.ReportingDataCollector;
@@ -44,6 +47,7 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     private final DepartmentRepository departmentRepository;
     private final ProjectRepository projectRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final AIScopeAuthorization aiScopeAuthorization;
 
     @Override
     public ReportingResponse generate(ReportingGenerateRequest request) {
@@ -51,9 +55,12 @@ public class ReportingAIServiceImpl implements ReportingAIService {
         UUID workspaceId = request.getWorkspaceId();
         UUID departmentId = request.getDepartmentId();
         UUID projectId = request.getProjectId();
+        UUID teamId = request.getTeamId();
+        AIScopeType scope = AIScopeUtils.resolveScope(request.getScope(), projectId, teamId);
 
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, scope, departmentId, projectId, teamId);
+        departmentId = resolvePersistedDepartmentId(workspaceId, scope, departmentId);
+        request.setDepartmentId(departmentId);
 
         LocalDate periodStart = request.getPeriodStart();
         LocalDate periodEnd = request.getPeriodEnd();
@@ -63,7 +70,7 @@ public class ReportingAIServiceImpl implements ReportingAIService {
         }
 
         Map<String, Object> collectedData = reportingDataCollector.collect(
-                workspaceId, departmentId, projectId, periodStart, periodEnd);
+                workspaceId, departmentId, projectId, teamId, scope, periodStart, periodEnd);
 
         AIExecutionRequest executionRequest = new AIExecutionRequest();
         executionRequest.setTask(AITask.REPORT_GENERATION);
@@ -84,16 +91,16 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     @Override
     public ReportingResponse regenerate(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
         ExecutiveReport existing = executiveReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Executive report not found"));
+        assertCanAccessReport(existing);
 
         ReportingGenerateRequest request = new ReportingGenerateRequest();
         request.setWorkspaceId(workspaceId);
-        request.setDepartmentId(departmentId);
-        request.setProjectId(projectId);
+        request.setDepartmentId(existing.getDepartment() != null ? existing.getDepartment().getId() : departmentId);
+        request.setProjectId(existing.getProject() != null ? existing.getProject().getId() : projectId);
         request.setTitle(existing.getTitle());
         request.setReportType(existing.getReportType());
         request.setPeriodStart(existing.getPeriodStart());
@@ -118,11 +125,11 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     public ReportingResponse edit(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId,
                                    ReportingEditRequest request) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
         ExecutiveReport report = executiveReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Executive report not found"));
+        assertCanMutateReport(report);
 
         if (request.getTitle() != null) report.setTitle(request.getTitle());
         if (request.getExecutiveSummary() != null) report.setExecutiveSummary(request.getExecutiveSummary());
@@ -144,11 +151,11 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     @Override
     public ReportingResponse approve(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
         ExecutiveReport report = executiveReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Executive report not found"));
+        assertCanMutateReport(report);
 
         report.setApprovalStatus(ExecutiveReport.ApprovalStatus.APPROVED);
         report.setApprovedBy(userId);
@@ -160,11 +167,11 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     @Override
     public ReportingResponse reject(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
         ExecutiveReport report = executiveReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Executive report not found"));
+        assertCanMutateReport(report);
 
         report.setApprovalStatus(ExecutiveReport.ApprovalStatus.REJECTED);
         report.setApprovedBy(userId);
@@ -177,22 +184,64 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     @Transactional(readOnly = true)
     public Page<ReportingResponse> getHistory(UUID workspaceId, int page, int size) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
-        return executiveReportRepository.findByWorkspacePaginated(
-                        workspaceId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")))
+        return aiScopeAuthorization.resolveReadableDepartmentFilter(workspaceId)
+                .map(deptId -> executiveReportRepository.findByWorkspaceAndDepartmentPaginated(
+                        workspaceId, deptId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))
+                .orElseGet(() -> executiveReportRepository.findByWorkspacePaginated(
+                        workspaceId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))
                 .map(report -> toResponse(report, null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ReportingResponse getById(UUID workspaceId, UUID reportId) {
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, aiScopeAuthorization.currentUserId());
+        ExecutiveReport report = executiveReportRepository.findByIdAndWorkspace(reportId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Executive report not found"));
+        assertCanAccessReport(report);
+        return toResponse(report, null);
+    }
+
+    private void assertCanAccessReport(ExecutiveReport report) {
+        UUID workspaceId = report.getWorkspace().getId();
+        UUID deptId = report.getDepartment() != null ? report.getDepartment().getId() : null;
+        aiScopeAuthorization.assertCanReadDepartmentScopedContent(workspaceId, deptId);
+    }
+
+    private void assertCanMutateReport(ExecutiveReport report) {
+        UUID workspaceId = report.getWorkspace().getId();
+        UUID deptId = report.getDepartment() != null ? report.getDepartment().getId() : null;
+        UUID projectId = report.getProject() != null ? report.getProject().getId() : null;
+        AIScopeType scope = projectId != null
+                ? AIScopeType.PROJECT
+                : (deptId != null ? AIScopeType.DEPARTMENT : AIScopeType.WORKSPACE);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, scope, deptId, projectId, null);
+    }
+
+    private UUID resolvePersistedDepartmentId(UUID workspaceId, AIScopeType scope, UUID departmentId) {
+        if (scope == AIScopeType.WORKSPACE) {
+            return null;
+        }
+        if (departmentId != null) {
+            return departmentId;
+        }
+        throw new BadRequestException("departmentId is required for this scope.");
     }
 
     private ReportingResponse saveReport(ReportingGenerateRequest request, UUID userId,
                                           AIExecutionResponse aiResponse, long executionTime) {
         Workspace workspace = workspaceRepository.findById(request.getWorkspaceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
-        Department department = departmentRepository.findById(request.getDepartmentId())
-                .orElse(null);
-        Project project = request.getProjectId() != null
-                ? projectRepository.findByIdAndDepartment_Id(request.getProjectId(), request.getDepartmentId()).orElse(null)
+        Department department = request.getDepartmentId() != null
+                ? departmentRepository.findById(request.getDepartmentId()).orElse(null)
                 : null;
+        Project project = request.getProjectId() != null && request.getDepartmentId() != null
+                ? projectRepository.findByIdAndDepartment_Id(request.getProjectId(), request.getDepartmentId()).orElse(null)
+                : (request.getProjectId() != null
+                    ? projectRepository.findById(request.getProjectId()).orElse(null)
+                    : null);
 
         ExecutiveReport report = new ExecutiveReport();
         report.setWorkspace(workspace);
@@ -264,25 +313,5 @@ public class ReportingAIServiceImpl implements ReportingAIService {
             throw new BadRequestException("User is not authenticated.");
         }
         return user.getId();
-    }
-
-    private void assertActiveWorkspaceMember(UUID workspaceId, UUID userId) {
-        WorkspaceMember wm = workspaceMemberRepository
-                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, userId)
-                .orElseThrow(() -> new ForbiddenException("You are not a member of this workspace."));
-        if (wm.getStatus() != com.trio.backend.enums.WorkspaceMemberStatus.ACTIVE) {
-            throw new ForbiddenException("You are not an active member of this workspace.");
-        }
-    }
-
-    private void assertWorkspaceAdminOrOwner(UUID workspaceId, UUID userId) {
-        boolean isAdmin = workspaceMemberRepository.existsWithRole(
-                workspaceId, userId, com.trio.backend.enums.WorkspaceRole.ADMIN);
-        boolean isOwner = workspaceRepository.findById(workspaceId)
-                .map(ws -> ws.getOwner().getId().equals(userId))
-                .orElse(false);
-        if (!isAdmin && !isOwner) {
-            throw new ForbiddenException("You do not have permission for this operation.");
-        }
     }
 }

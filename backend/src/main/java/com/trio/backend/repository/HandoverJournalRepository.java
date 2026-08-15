@@ -4,6 +4,7 @@ import com.trio.backend.entity.HandoverJournal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -24,7 +25,7 @@ import java.util.UUID;
  * </ul>
  */
 @Repository
-public interface HandoverJournalRepository extends JpaRepository<HandoverJournal, UUID> {
+public interface HandoverJournalRepository extends JpaRepository<HandoverJournal, UUID>, JpaSpecificationExecutor<HandoverJournal> {
 
     // ==================== CRUD ====================
 
@@ -82,31 +83,6 @@ public interface HandoverJournalRepository extends JpaRepository<HandoverJournal
             """)
     Page<HandoverJournal> findByDepartmentIdPaginated(
             @Param("departmentId") UUID departmentId,
-            Pageable pageable
-    );
-
-    /**
-     * Department-scoped, filterable journal listing used by the accessible endpoints.
-     * <p>All filters are optional; {@code departmentId} is already resolved by the service
-     * (locked to the caller's own department unless the caller is a workspace admin).</p>
-     */
-    @Query("""
-            SELECT hj FROM HandoverJournal hj
-            WHERE hj.workspace.id = :workspaceId
-              AND hj.status = 'ACTIVE'
-              AND (:departmentId IS NULL OR hj.department.id = :departmentId)
-              AND (:projectId IS NULL OR hj.project.id = :projectId)
-              AND (:shift IS NULL OR hj.shift = :shift)
-              AND (:from IS NULL OR (hj.journalDate >= :from AND hj.journalDate < :to))
-            ORDER BY hj.journalDate DESC, hj.generationDate DESC
-            """)
-    Page<HandoverJournal> findAccessiblePaginated(
-            @Param("workspaceId") UUID workspaceId,
-            @Param("departmentId") UUID departmentId,
-            @Param("projectId") UUID projectId,
-            @Param("shift") com.trio.backend.entity.HandoverEntry.Shift shift,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to,
             Pageable pageable
     );
 

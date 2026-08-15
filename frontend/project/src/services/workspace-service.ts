@@ -17,6 +17,7 @@ export interface WorkspaceResponse {
   description: string;
   status: string;
   owner: { id: string; firstName: string; lastName: string; email: string };
+  myRole: string | null;
   memberCount: number;
   teamCount: number;
   projectCount: number;

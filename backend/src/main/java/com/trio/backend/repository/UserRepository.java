@@ -21,6 +21,16 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
             SELECT DISTINCT u
             FROM User u
             LEFT JOIN FETCH u.userRoles ur
+            LEFT JOIN FETCH ur.role
+            LEFT JOIN FETCH u.primaryDepartment
+            WHERE u.id = :userId
+            """)
+    Optional<User> findByIdWithRolesAndPrimaryDepartment(@Param("userId") UUID userId);
+
+    @Query("""
+            SELECT DISTINCT u
+            FROM User u
+            LEFT JOIN FETCH u.userRoles ur
             LEFT JOIN FETCH ur.role r
             LEFT JOIN FETCH r.rolePermissions rp
             LEFT JOIN FETCH rp.permission

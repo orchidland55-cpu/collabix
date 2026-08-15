@@ -303,6 +303,22 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     );
 
     /**
+     * Find all active documents for a specific department with the owning
+     * project eagerly fetched (avoids N+1 on {@code d.project}).
+     */
+    @Query("""
+            SELECT d FROM Document d
+            JOIN FETCH d.project
+            WHERE d.project.department.id = :departmentId
+            AND d.status = 'ACTIVE'
+            ORDER BY d.createdAt DESC
+            """)
+    Page<Document> findRecentByDepartmentIdPaginated(
+            @Param("departmentId") UUID departmentId,
+            Pageable pageable
+    );
+
+    /**
      * Count active documents in a department.
      * Useful for department dashboard metrics.
      */

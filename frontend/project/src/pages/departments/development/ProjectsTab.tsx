@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, FolderKanban, AlertCircle, MoreHorizontal, Edit2, Archive, Trash2, RefreshCw, FolderOpen } from 'lucide-react';
+import { Search, Plus, FolderKanban, AlertCircle, MoreHorizontal, Edit2, Archive, RefreshCw, FolderOpen } from 'lucide-react';
 import { Card, CardBody } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
@@ -13,7 +13,7 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useToast } from '../../../components/ui/Toast';
-import { useProjectList, useCreateProject, useUpdateProject, useDeleteProject } from '../../../services/project-hooks';
+import { useProjectList, useCreateProject, useUpdateProject, useDeleteProject, useProjectAccess } from '../../../services/project-hooks';
 import { useUsersList } from '../../../services/admin-hooks';
 import { cn } from '../../../lib/cn';
 import type { ProjectResponse, ProjectPriority } from '../../projects/projects-types';
@@ -86,6 +86,7 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
+  const { canCreate, canUpdate, canArchive } = useProjectAccess(wsId);
 
   const projects = projectsPage?.content ?? [];
   const total = projectsPage?.page?.totalElements ?? 0;
@@ -149,7 +150,7 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
     if (!confirmDelete) return;
     try {
       await deleteProject.mutateAsync({ wsId, deptId, projectId: confirmDelete.id });
-      toast({ title: 'Project deleted', tone: 'success' });
+      toast({ title: 'Project archived', tone: 'success' });
       setConfirmDelete(null);
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : 'Failed to delete project', tone: 'danger' });
@@ -185,7 +186,7 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
           <h1 className="text-page font-semibold text-text-primary">Development Projects</h1>
           <p className="text-body text-text-secondary">Plan and track engineering projects for this department.</p>
         </div>
-        <Button variant="primary" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>New Project</Button>
+        {canCreate && <Button variant="primary" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>New Project</Button>}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -238,7 +239,7 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
               title={search || priorityFilter || statusFilter ? 'No projects match your filters' : 'No projects yet'}
               description={search || priorityFilter || statusFilter ? 'Try adjusting your filters.' : 'Create your first development project to get started.'}
               action={!(search || priorityFilter || statusFilter) ? (
-                <Button variant="primary" size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>New Project</Button>
+                canCreate && <Button variant="primary" size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>New Project</Button>
               ) : undefined}
             />
           </CardBody>
@@ -290,15 +291,17 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
                         </p>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Dropdown
-                          trigger={<IconButton label="Project actions" variant="ghost"><MoreHorizontal className="h-4 w-4" /></IconButton>}
-                          align="right"
-                          items={[
-                            { label: 'Edit Project', icon: <Edit2 className="h-4 w-4" />, onClick: () => openEdit(p) },
-                            { divider: true },
-                            { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, danger: true, onClick: () => setConfirmDelete(p) },
-                          ]}
-                        />
+                        {(canUpdate || canArchive) && (
+                          <Dropdown
+                            trigger={<IconButton label="Project actions" variant="ghost"><MoreHorizontal className="h-4 w-4" /></IconButton>}
+                            align="right"
+                            items={[
+                              ...(canUpdate ? [{ label: 'Edit Project', icon: <Edit2 className="h-4 w-4" />, onClick: () => openEdit(p) }] : []),
+                              ...(canUpdate && canArchive ? [{ divider: true }] : []),
+                              ...(canArchive ? [{ label: 'Archive', icon: <Archive className="h-4 w-4" />, danger: true, onClick: () => setConfirmDelete(p) }] : []),
+                            ]}
+                          />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -359,13 +362,13 @@ export function DevelopmentProjectsTab({ wsId, deptId }: { wsId: string; deptId:
         </div>
       </Modal>
 
-      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Delete Project" size="sm">
+      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Archive Project" size="sm">
         <p className="text-body text-text-secondary">
-          Are you sure you want to delete "{confirmDelete?.name}"? This action cannot be undone.
+          Are you sure you want to archive "{confirmDelete?.name}"? The project will be moved to the archived list and can be restored later.
         </p>
         <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-border-subtle">
           <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button variant="danger" onClick={handleDelete}>Delete</Button>
+          <Button variant="danger" onClick={handleDelete}>Archive</Button>
         </div>
       </Modal>
     </div>

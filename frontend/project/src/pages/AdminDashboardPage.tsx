@@ -5,29 +5,23 @@ import {
   Network,
   Users,
   UserCheck,
-  FolderKanban,
-  CheckSquare,
-  FileText,
-  Activity,
   AlertCircle,
   Plus,
   ShieldCheck,
   UserPlus,
   Boxes,
   Briefcase,
-  BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
 import { useWorkspaceId } from '../hooks/useWorkspaceId';
 import { useWorkspacesList } from '../services/workspace-hooks';
-import { useWorkspaceAnalytics } from '../services/department-hooks';
 import { useDepartmentsList, useUserStatistics } from '../services/admin-hooks';
+import { AdminDashboardStats } from '../components/admin/AdminDashboardStats';
 import { Card, CardHeader, CardTitle, CardBody } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Progress } from '../components/ui/Progress';
 import { cn } from '../lib/cn';
 
 const statToneBg: Record<string, string> = {
@@ -123,7 +117,6 @@ export function AdminDashboardPage() {
   const { data: workspaces, isLoading: wsLoading, isError: wsError } = useWorkspacesList();
   const { data: departments, isLoading: deptLoading } = useDepartmentsList();
   const { data: userStats, isLoading: statsLoading } = useUserStatistics();
-  const { data: analytics, isLoading: analyticsLoading } = useWorkspaceAnalytics(wsId || undefined);
 
   const adminName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
   const now = new Date();
@@ -210,30 +203,7 @@ export function AdminDashboardPage() {
         </div>
       )}
 
-      {analytics && wsId && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-accent-600 dark:text-accent-400" /> Workspace Analytics
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Projects" value={analytics.projectCount} icon={FolderKanban} tone="accent" loading={analyticsLoading} />
-              <KpiCard label="Tasks" value={analytics.tasks.activeCount} icon={CheckSquare} tone="info" loading={analyticsLoading} />
-              <KpiCard label="Documents" value={analytics.documents.documentCount} icon={FileText} tone="warning" loading={analyticsLoading} />
-              <KpiCard label="Activities" value={analytics.activities.totalCount} icon={Activity} tone="success" loading={analyticsLoading} />
-            </div>
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-caption text-text-tertiary">Task completion</p>
-                <p className="text-caption font-semibold text-text-primary">{Math.round(analytics.tasks.completionRate)}%</p>
-              </div>
-              <Progress value={analytics.tasks.completionRate} tone="accent" />
-            </div>
-          </CardBody>
-        </Card>
-      )}
+      {wsId && <AdminDashboardStats workspaceId={wsId} />}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>

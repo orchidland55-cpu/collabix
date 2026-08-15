@@ -13,6 +13,10 @@ export function isAdmin(roles?: string[] | null): boolean {
   return !!roles?.some((r) => r === ADMIN_ROLE || r === SUPER_ADMIN_ROLE);
 }
 
+export function isSuperAdmin(roles?: string[] | null): boolean {
+  return !!roles?.some((r) => r === SUPER_ADMIN_ROLE);
+}
+
 export function isManager(roles?: string[] | null): boolean {
   return !!roles?.some((r) => r === MANAGER_ROLE);
 }

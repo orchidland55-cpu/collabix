@@ -31,6 +31,7 @@ export function useUploadEmployeeDocument(wsId: string, deptId: string, employee
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.employeeDocs(wsId, deptId, employeeId) });
       qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.expiring(wsId, deptId) });
     },
   });
 }

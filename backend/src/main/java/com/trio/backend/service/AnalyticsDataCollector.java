@@ -2,6 +2,7 @@ package com.trio.backend.service;
 
 import com.trio.backend.entity.Project;
 import com.trio.backend.entity.Workspace;
+import com.trio.backend.enums.AIScopeType;
 import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.repository.WorkspaceRepository;
 import com.trio.backend.reporting.analytics.dto.metrics.WorkspaceAnalyticsResponse;
@@ -24,20 +25,39 @@ public class AnalyticsDataCollector {
 
     public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId,
                                         LocalDate startDate, LocalDate endDate) {
+        return collect(workspaceId, departmentId, projectId, null, AIScopeType.DEPARTMENT, startDate, endDate);
+    }
+
+    public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId, UUID teamId,
+                                        AIScopeType scope, LocalDate startDate, LocalDate endDate) {
         Workspace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found"));
 
-        WorkspaceAnalyticsResponse wsAnalytics = analyticsService.getWorkspaceAnalytics(workspaceId);
+        AIScopeType effectiveScope = scope != null ? scope : AIScopeType.DEPARTMENT;
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("workspaceName", workspace.getName());
         data.put("workspaceId", workspaceId);
         data.put("departmentId", departmentId);
         data.put("projectId", projectId);
+        data.put("teamId", teamId);
+        data.put("scope", effectiveScope.name());
         data.put("reportDate", LocalDate.now().toString());
         data.put("timeRangeStart", startDate != null ? startDate.toString() : null);
         data.put("timeRangeEnd", endDate != null ? endDate.toString() : null);
 
+        switch (effectiveScope) {
+            case WORKSPACE -> populateWorkspaceScope(workspaceId, data);
+            case DEPARTMENT -> populateDepartmentScope(workspaceId, departmentId, data);
+            case PROJECT -> populateProjectScope(workspaceId, departmentId, projectId, data);
+            case TEAM -> populateTeamScope(workspaceId, teamId, data);
+        }
+
+        return data;
+    }
+
+    private void populateWorkspaceScope(UUID workspaceId, Map<String, Object> data) {
+        WorkspaceAnalyticsResponse wsAnalytics = analyticsService.getWorkspaceAnalytics(workspaceId);
         data.put("tasks", buildTaskMetricsMap(wsAnalytics));
         data.put("activities", buildActivityMetricsMap(wsAnalytics));
         data.put("documents", buildDocumentMetricsMap(wsAnalytics));
@@ -53,24 +73,43 @@ public class AnalyticsDataCollector {
         data.put("projectSummary", buildProjectSummaryMap(wsDashboard));
         data.put("taskSummary", buildTaskSummaryMap(wsDashboard));
         data.put("notificationSummary", buildNotificationSummaryMap(wsDashboard));
+    }
 
-        if (projectId != null) {
-            Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
-                    .orElse(null);
-            if (project != null) {
-                data.put("projectName", project.getName());
-                data.put("projectDescription", project.getDescription());
-                data.put("projectStatus", project.getStatus());
-                var projectDashboard = dashboardService.getProjectDashboard(workspaceId, projectId);
-                data.put("projectProgress", buildProjectProgressMap(projectDashboard));
-            }
+    private void populateDepartmentScope(UUID workspaceId, UUID departmentId, Map<String, Object> data) {
+        var deptDashboard = dashboardService.getDepartmentDashboard(workspaceId, departmentId);
+        data.put("departmentName", deptDashboard.getOverview() != null
+                ? deptDashboard.getOverview().getDepartmentName() : null);
+        data.put("departmentOverview", deptDashboard.getOverview());
+        data.put("taskSummary", deptDashboard.getTaskSummary());
+        data.put("activeProjects", deptDashboard.getActiveProjects());
+        data.put("departmentMembers", deptDashboard.getDepartmentMembers());
+        data.put("departmentActivities", deptDashboard.getDepartmentActivities());
+    }
+
+    private void populateProjectScope(UUID workspaceId, UUID departmentId, UUID projectId, Map<String, Object> data) {
+        populateDepartmentScope(workspaceId, departmentId, data);
+        Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId).orElse(null);
+        if (project != null) {
+            data.put("projectName", project.getName());
+            data.put("projectDescription", project.getDescription());
+            data.put("projectStatus", project.getStatus());
+            var projectDashboard = dashboardService.getProjectDashboard(workspaceId, projectId);
+            data.put("projectProgress", buildProjectProgressMap(projectDashboard));
         }
+    }
 
-        return data;
+    private void populateTeamScope(UUID workspaceId, UUID teamId, Map<String, Object> data) {
+        var teamDashboard = dashboardService.getTeamDashboard(workspaceId, teamId);
+        data.put("teamOverview", teamDashboard.getOverview());
+        data.put("taskSummary", teamDashboard.getTaskSummary());
+        data.put("teamMembers", teamDashboard.getTeamMembers());
+        data.put("teamStatistics", teamDashboard.getTeamStatistics());
+        data.put("teamActivities", teamDashboard.getTeamActivities());
+        data.put("activeDepartmentProjects", teamDashboard.getActiveDepartmentProjects());
     }
 
     public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId) {
-        return collect(workspaceId, departmentId, projectId, null, null);
+        return collect(workspaceId, departmentId, projectId, null, null, null, null);
     }
 
     private Map<String, Object> buildTaskMetricsMap(WorkspaceAnalyticsResponse analytics) {

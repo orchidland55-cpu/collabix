@@ -33,7 +33,8 @@ import {
   CalendarDays,
   Archive,
 } from 'lucide-react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/query-client';
 import { ThemeProvider } from './lib/theme';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { isAdmin, isManager } from './lib/access';
@@ -44,17 +45,6 @@ import { Card, CardBody } from './components/ui/Card';
 import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { ProtectedRoute, PublicRoute, GlobalAuthHandler } from './pages/auth';
 import type { BreadcrumbItem } from './components/ui/Breadcrumbs';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      gcTime: 10 * 60 * 1000,
-      retry: 2,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 // Lazy-loaded pages
 const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -536,11 +526,12 @@ function AppRoutes() {
           <Route path="handover" element={<HandoverAIPage />} />
           <Route path="knowledge" element={<KnowledgeAIPage />} />
           <Route path="reports" element={<ReportAIPage />} />
+          <Route path="conversations" element={<Suspense fallback={<PageLoader />}><ConversationLayout /></Suspense>}>
+            <Route index element={<Suspense fallback={<PageLoader />}><ConversationPage /></Suspense>} />
+            <Route path=":conversationId" element={<Suspense fallback={<PageLoader />}><ConversationChatView /></Suspense>} />
+          </Route>
         </Route>
-        <Route path="ai/chat" element={<Suspense fallback={<PageLoader />}><ConversationLayout /></Suspense>}>
-          <Route index element={<Suspense fallback={<PageLoader />}><ConversationPage /></Suspense>} />
-          <Route path=":conversationId" element={<Suspense fallback={<PageLoader />}><ConversationChatView /></Suspense>} />
-        </Route>
+        <Route path="ai/chat/*" element={<Navigate to="/app/ai/conversations" replace />} />
         <Route path="ai/report/:reportId" element={<Suspense fallback={<PageLoader />}><ReportViewerPage /></Suspense>} />
         <Route path="activity" element={<Suspense fallback={<PageLoader />}><ActivityPage /></Suspense>} />
         <Route path="calendar" element={<Suspense fallback={<PageLoader />}><CalendarPage /></Suspense>} />

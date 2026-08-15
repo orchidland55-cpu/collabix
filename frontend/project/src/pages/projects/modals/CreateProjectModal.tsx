@@ -17,9 +17,11 @@ interface CreateProjectModalProps {
   onClose: () => void;
   wsId?: string;
   deptId?: string;
+  departmentName?: string;
+  departmentLocked?: boolean;
 }
 
-export function CreateProjectModal({ open, onClose, wsId, deptId }: CreateProjectModalProps) {
+export function CreateProjectModal({ open, onClose, wsId, deptId, departmentName, departmentLocked }: CreateProjectModalProps) {
   const { toast } = useToast();
   const createMutation = useCreateProject();
   const [name, setName] = useState('');
@@ -98,13 +100,16 @@ export function CreateProjectModal({ open, onClose, wsId, deptId }: CreateProjec
             options={[{ value: '', label: 'Select workspace' }, ...(workspaces ?? []).map((w) => ({ value: w.id, label: w.name || w.id }))]}
           />
         )}
-        {!deptId && (
+        {!deptId && !departmentLocked && (
           <Select
             label="Department"
             value={selectedDept ?? ''}
             onChange={(e) => setSelectedDept(e.target.value || undefined)}
             options={[{ value: '', label: 'Select department' }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name || d.id }))]}
           />
+        )}
+        {departmentLocked && departmentName && (
+          <Input label="Department" value={departmentName} readOnly disabled />
         )}
         <Input label="Project Name *" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter project name" />
         <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" rows={3} />

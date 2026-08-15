@@ -19,6 +19,8 @@ public interface ProjectService {
 
     Page<ProjectResponse> listPaginated(UUID workspaceId, UUID departmentId, String search, Pageable pageable);
 
+    Page<ProjectResponse> listAllPaginated(UUID workspaceId, String search, Pageable pageable);
+
     List<ProjectResponse> listArchived(UUID workspaceId, UUID departmentId);
 
     ProjectResponse update(UUID workspaceId, UUID departmentId, UUID projectId, UpdateProjectRequest request);

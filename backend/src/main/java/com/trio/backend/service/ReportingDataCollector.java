@@ -3,9 +3,11 @@ package com.trio.backend.service;
 import com.trio.backend.ai.entity.AIHistory;
 import com.trio.backend.ai.enums.AIProvider;
 import com.trio.backend.ai.repository.AIHistoryRepository;
+import com.trio.backend.enums.AIScopeType;
+import com.trio.backend.reporting.analytics.dto.metrics.WorkspaceAnalyticsResponse;
 import com.trio.backend.entity.*;
 import com.trio.backend.repository.*;
-import com.trio.backend.reporting.analytics.dto.metrics.WorkspaceAnalyticsResponse;
+import com.trio.backend.service.AnalyticsDataCollector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -26,43 +28,48 @@ public class ReportingDataCollector {
     private final AnalyticsReportRepository analyticsReportRepository;
     private final HandoverJournalRepository handoverJournalRepository;
     private final AIHistoryRepository aiHistoryRepository;
+    private final AnalyticsDataCollector analyticsDataCollector;
 
     public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId,
                                         LocalDate periodStart, LocalDate periodEnd) {
-        Workspace workspace = workspaceRepository.findById(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found"));
+        return collect(workspaceId, departmentId, projectId, null, AIScopeType.DEPARTMENT, periodStart, periodEnd);
+    }
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("workspaceName", workspace.getName());
-        data.put("workspaceId", workspaceId);
-        data.put("departmentId", departmentId);
-        data.put("projectId", projectId);
-        data.put("reportDate", LocalDate.now().toString());
+    public Map<String, Object> collect(UUID workspaceId, UUID departmentId, UUID projectId, UUID teamId,
+                                        AIScopeType scope, LocalDate periodStart, LocalDate periodEnd) {
+        AIScopeType effectiveScope = scope != null ? scope : AIScopeType.DEPARTMENT;
+        Map<String, Object> scopedData = analyticsDataCollector.collect(
+                workspaceId, departmentId, projectId, teamId, effectiveScope, periodStart, periodEnd);
+
+        Map<String, Object> data = new LinkedHashMap<>(scopedData);
         data.put("periodStart", periodStart != null ? periodStart.toString() : null);
         data.put("periodEnd", periodEnd != null ? periodEnd.toString() : null);
 
-        data.put("analyticsReport", collectLatestAnalyticsReport(workspaceId));
-        data.put("handoverJournals", collectRecentHandoverJournals(workspaceId));
-        data.put("knowledgeHistory", collectRecentKnowledgeHistory(workspaceId));
-
-        WorkspaceAnalyticsResponse wsAnalytics = analyticsService.getWorkspaceAnalytics(workspaceId);
-        data.put("kpiOverview", buildKpiOverview(wsAnalytics));
-
-        var wsDashboard = dashboardService.getWorkspaceDashboard(workspaceId);
-        data.put("workspaceOverview", buildWorkspaceOverview(wsDashboard));
-
-        if (projectId != null) {
-            Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId).orElse(null);
-            if (project != null) {
-                data.put("projectName", project.getName());
-                data.put("projectStatus", project.getStatus());
-                data.put("projectDescription", project.getDescription());
-            }
+        if (effectiveScope == AIScopeType.WORKSPACE) {
+            data.put("analyticsReport", collectLatestAnalyticsReport(workspaceId));
+            data.put("handoverJournals", collectRecentHandoverJournals(workspaceId));
+        } else if (departmentId != null) {
+            data.put("handoverJournals", collectRecentHandoverJournalsForDepartment(workspaceId, departmentId));
         }
 
         data.put("summary", buildSummary(data));
-
         return data;
+    }
+
+    private List<Map<String, Object>> collectRecentHandoverJournalsForDepartment(UUID workspaceId, UUID departmentId) {
+        var journals = handoverJournalRepository.findByDepartmentIdPaginated(departmentId, PageRequest.of(0, 5));
+        return journals.getContent().stream().map(this::mapHandoverJournal).collect(Collectors.toList());
+    }
+
+    private Map<String, Object> mapHandoverJournal(HandoverJournal hj) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", hj.getId());
+        map.put("projectName", hj.getProject().getName());
+        map.put("journalDate", hj.getJournalDate() != null ? hj.getJournalDate().toString() : null);
+        map.put("totalHandovers", hj.getTotalHandovers());
+        map.put("executiveSummary", hj.getGeneratedSummary());
+        map.put("generatedAt", hj.getGenerationDate() != null ? hj.getGenerationDate().toString() : null);
+        return map;
     }
 
     private Map<String, Object> collectLatestAnalyticsReport(UUID workspaceId) {
@@ -84,21 +91,7 @@ public class ReportingDataCollector {
 
     private List<Map<String, Object>> collectRecentHandoverJournals(UUID workspaceId) {
         var journals = handoverJournalRepository.findByWorkspaceIdPaginated(workspaceId, PageRequest.of(0, 5));
-        return journals.getContent().stream().map(hj -> {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("id", hj.getId());
-            map.put("projectName", hj.getProject().getName());
-            map.put("journalDate", hj.getJournalDate() != null ? hj.getJournalDate().toString() : null);
-            map.put("totalHandovers", hj.getTotalHandovers());
-            map.put("pendingHandovers", hj.getPendingHandovers());
-            map.put("completedHandovers", hj.getCompletedHandovers());
-            map.put("rejectedHandovers", hj.getRejectedHandovers());
-            map.put("urgentHandovers", hj.getUrgentHandovers());
-            map.put("overdueHandovers", hj.getOverdueHandovers());
-            map.put("executiveSummary", hj.getGeneratedSummary());
-            map.put("generatedAt", hj.getGenerationDate() != null ? hj.getGenerationDate().toString() : null);
-            return map;
-        }).collect(Collectors.toList());
+        return journals.getContent().stream().map(this::mapHandoverJournal).collect(Collectors.toList());
     }
 
     private List<Map<String, Object>> collectRecentKnowledgeHistory(UUID workspaceId) {

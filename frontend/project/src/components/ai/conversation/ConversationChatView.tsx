@@ -1,184 +1,135 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { ConversationHeader } from './ConversationHeader';
 import { ConversationComposer } from './ConversationComposer';
 import { ConversationMessages } from './ConversationMessages';
-import { ConversationStreaming } from './ConversationStreaming';
-import { ConversationLoadingThinking } from './ConversationLoading';
 import { ConversationErrorCard } from './ConversationErrorCard';
 import { ConversationEmptyState } from './ConversationEmptyStates';
-import { useConversationContext } from './ConversationContext';
-import type { Message, ErrorType, LoadingState } from './ConversationTypes';
+import { ConversationLoadingThinking } from './ConversationLoading';
+import { useConversationDetail, useDeleteConversation, useUpdateConversation } from '../../../services/conversation-hooks';
+import { useMessages, useCreateMessage } from '../../../services/message-hooks';
+import { useAuth } from '../../../lib/auth-context';
+import { aiPath } from '../../../hooks/useEffectiveWorkspaceId';
+import type { Message, ErrorType } from './ConversationTypes';
 
 interface OutletContext {
   toggleContextPanel: () => void;
   contextPanelOpen: boolean;
+  workspaceId: string;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export function ConversationChatView() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const { toggleContextPanel, contextPanelOpen } = useOutletContext<OutletContext>();
-  const { streaming, setStreaming } = useConversationContext();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState<LoadingState | null>(null);
-  const [error, setError] = useState<ErrorType | null>(null);
+  const { toggleContextPanel, contextPanelOpen, workspaceId } = useOutletContext<OutletContext>();
+  const { user } = useAuth();
+
   const [favorite, setFavorite] = useState(false);
-  const [title, setTitle] = useState('');
+  const [error, setError] = useState<ErrorType | null>(null);
+
+  const { data: conversation, isError: convError } = useConversationDetail(workspaceId, conversationId);
+  const { data: messagesData, isLoading: messagesLoading, isError: messagesError } = useMessages(workspaceId, conversationId ?? '');
+  const createMessage = useCreateMessage(workspaceId, conversationId ?? '');
+  const updateConversation = useUpdateConversation(workspaceId, conversationId ?? '');
+  const deleteConversation = useDeleteConversation(workspaceId);
+
+  const messages: Message[] = useMemo(() => {
+    const pages = messagesData?.pages ?? [];
+    const flat = pages.flatMap((p) => p.content);
+    return flat.map((m) => ({
+      id: m.id,
+      role: m.senderId === user?.id ? 'user' as const : 'user' as const,
+      content: m.content,
+      timestamp: formatTime(m.createdAt),
+    }));
+  }, [messagesData, user?.id]);
 
   useEffect(() => {
-    if (!conversationId) return;
-    setMessages([]);
-    setTitle('Conversation');
+    setError(null);
     setFavorite(false);
+  }, [conversationId]);
+
+  const handleSend = useCallback(async (content: string) => {
+    if (!conversationId || !content.trim()) return;
     setError(null);
-    setLoading(null);
-    setStreaming(false);
-  }, [conversationId, setStreaming]);
+    try {
+      await createMessage.mutateAsync({ content: content.trim(), messageType: 'TEXT' });
+    } catch {
+      setError('connection_lost');
+    }
+  }, [conversationId, createMessage]);
 
-  const handleSend = useCallback((content: string) => {
-    const newMsg: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: 'Just now',
-    };
-    setMessages((prev) => [...prev, newMsg]);
-    setLoading('thinking');
-    setError(null);
-    setTimeout(() => {
-      setLoading(null);
-      setStreaming(false);
-    }, 3000);
-  }, [setStreaming]);
+  const handleRename = useCallback(async (newTitle: string) => {
+    if (!conversationId) return;
+    await updateConversation.mutateAsync({ name: newTitle });
+  }, [conversationId, updateConversation]);
 
-  const handleStopGeneration = useCallback(() => {
-    setLoading(null);
-    setStreaming(false);
-  }, [setStreaming]);
+  const handleDelete = useCallback(async () => {
+    if (!conversationId) return;
+    await deleteConversation.mutateAsync(conversationId);
+    navigate(aiPath('/app/ai/conversations', workspaceId));
+  }, [conversationId, deleteConversation, navigate, workspaceId]);
 
-  const handleCopy = useCallback((id: string, content: string) => {
-    navigator.clipboard.writeText(content);
-  }, []);
+  if (!conversationId || !workspaceId) {
+    return <ConversationEmptyState variant="no-messages" onAction={() => navigate(aiPath('/app/ai/conversations', workspaceId))} />;
+  }
 
-  const handleRegenerate = useCallback((id: string) => {
-    setLoading('generating');
-    setError(null);
-    setTimeout(() => {
-      setLoading(null);
-    }, 2000);
-  }, []);
-
-  const handleLike = useCallback((id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => m.role === 'ai' && m.id === id ? { ...m, liked: !m.liked, disliked: false } : m),
+  if (convError || messagesError) {
+    return (
+      <div className="p-6">
+        <ConversationErrorCard type="unexpected" onRetry={() => window.location.reload()} onDismiss={() => navigate(aiPath('/app/ai/conversations', workspaceId))} />
+      </div>
     );
-  }, []);
+  }
 
-  const handleDislike = useCallback((id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => m.role === 'ai' && m.id === id ? { ...m, disliked: !m.disliked, liked: false } : m),
-    );
-  }, []);
-
-  const handleBookmark = useCallback((id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => m.role === 'ai' && m.id === id ? { ...m, bookmarked: !m.bookmarked } : m),
-    );
-  }, []);
-
-  const handleContinueConversation = useCallback(() => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `msg-${Date.now()}`,
-        role: 'ai',
-        content: 'I\'d be happy to continue. What would you like to explore further?',
-        timestamp: 'Just now',
-        followUps: [],
-      },
-    ]);
-  }, []);
-
-  const handleFollowUpSelect = useCallback((id: string, question: string) => {
-    handleSend(question);
-  }, [handleSend]);
-
-  const handleRename = useCallback((newTitle: string) => {
-    setTitle(newTitle);
-  }, []);
-
-  const handleDelete = useCallback(() => {
-    navigate('/app/ai/chat');
-  }, [navigate]);
-
-  const handleFollowUpQuestion = useCallback((question: string) => {
-    handleSend(question);
-  }, [handleSend]);
-
-  const handleErrorRetry = useCallback(() => {
-    setError(null);
-    setLoading('thinking');
-    setTimeout(() => {
-      setLoading(null);
-    }, 2000);
-  }, []);
-
-  const handleErrorDismiss = useCallback(() => {
-    setError(null);
-  }, []);
-
-  const getTimestamp = () => {
-    const h = new Date().getHours();
-    return `${h}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-  };
-
-  const hasMessages = messages.length > 0 || loading !== null || error !== null;
+  const title = conversation?.name ?? 'Conversation';
+  const hasMessages = messages.length > 0 || createMessage.isPending;
 
   return (
     <div className="flex h-full flex-col">
-      {hasMessages ? (
-        <>
-          <ConversationHeader
-            title={title}
-            updatedAt={messages[0]?.timestamp || 'Just now'}
-            favorite={favorite}
-            onRename={handleRename}
-            onToggleFavorite={() => setFavorite(!favorite)}
-            onDelete={handleDelete}
-            onToggleContextPanel={toggleContextPanel}
-            contextPanelOpen={contextPanelOpen}
-          />
+      <ConversationHeader
+        title={title}
+        updatedAt={conversation?.updatedAt ? formatTime(conversation.updatedAt) : 'Just now'}
+        favorite={favorite}
+        onRename={handleRename}
+        onToggleFavorite={() => setFavorite(!favorite)}
+        onDelete={handleDelete}
+        onToggleContextPanel={toggleContextPanel}
+        contextPanelOpen={contextPanelOpen}
+      />
 
-          <ConversationMessages
-            messages={messages}
-            onCopy={handleCopy}
-            onRegenerate={handleRegenerate}
-            onLike={handleLike}
-            onDislike={handleDislike}
-            onBookmark={handleBookmark}
-            onContinueConversation={handleContinueConversation}
-            onFollowUpSelect={handleFollowUpSelect}
-          />
-
-          {loading && <ConversationLoadingThinking state={loading} />}
-          {error && (
-            <div className="px-4 sm:px-6 py-4">
-              <ConversationErrorCard type={error} onRetry={handleErrorRetry} onDismiss={handleErrorDismiss} />
-            </div>
-          )}
-          {streaming && <ConversationStreaming visible={streaming} onStop={handleStopGeneration} />}
-
-          <ConversationComposer
-            onSend={handleSend}
-            onStopGeneration={handleStopGeneration}
-            streaming={streaming || loading !== null}
-            suggestedPrompts={undefined}
-          />
-        </>
+      {messagesLoading && messages.length === 0 ? (
+        <ConversationLoadingThinking state="thinking" />
+      ) : hasMessages ? (
+        <ConversationMessages
+          messages={messages}
+          onCopy={(_id, content) => navigator.clipboard.writeText(content)}
+          onRegenerate={() => undefined}
+          onLike={() => undefined}
+          onDislike={() => undefined}
+          onBookmark={() => undefined}
+          onContinueConversation={() => undefined}
+          onFollowUpSelect={(_id, question) => handleSend(question)}
+        />
       ) : (
-        <ConversationEmptyState variant="no-messages" onAction={() => {}} />
+        <ConversationEmptyState variant="no-messages" onAction={() => handleSend('Hello')} />
       )}
+
+      {error && (
+        <div className="px-4 sm:px-6 py-4">
+          <ConversationErrorCard type={error} onRetry={() => setError(null)} onDismiss={() => setError(null)} />
+        </div>
+      )}
+
+      <ConversationComposer
+        onSend={handleSend}
+        streaming={createMessage.isPending}
+        suggestedPrompts={undefined}
+      />
     </div>
   );
 }

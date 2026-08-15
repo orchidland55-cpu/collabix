@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, FolderKanban, Calendar, Clock, Users, AlertCircle, Edit2, Archive, Activity, Settings, Info,
+  ArrowLeft, FolderKanban, Calendar, Clock, Users, AlertCircle, Edit2, Archive, Activity, Settings, Info, ShieldBan,
 } from 'lucide-react';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -11,8 +11,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { IconButton } from '../../components/ui/IconButton';
 import { Dropdown, type DropdownItem } from '../../components/ui/Dropdown';
-import { Can } from '../../pages/auth';
-import { useProjectDetail } from '../../services/project-hooks';
+import { useProjectDetail, useProjectAccess, useProjectDepartmentContext, getProjectQueryErrorState } from '../../services/project-hooks';
 import { EditProjectModal } from './modals/EditProjectModal';
 import { ArchiveProjectModal } from './modals/ArchiveProjectModal';
 import type { ProjectResponse, ProjectPriority } from './projects-types';
@@ -36,11 +35,23 @@ const statusColors: Record<string, 'success' | 'neutral'> = {
 
 export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProps) {
   const [searchParams] = useSearchParams();
-  const wsId = searchParams.get('ws') ?? '';
-  const deptId = searchParams.get('dept') ?? '';
+  const urlWsId = searchParams.get('ws') ?? '';
+  const urlDeptId = searchParams.get('dept') ?? '';
   const [activeTab, setActiveTab] = useState('overview');
   const [showEdit, setShowEdit] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+
+  const {
+    workspaceId: contextWsId,
+    departmentId: contextDeptId,
+    canSelectDepartment,
+    isScopedUser,
+    hasAssignedDepartment,
+    isLoading: contextLoading,
+  } = useProjectDepartmentContext();
+
+  const wsId = urlWsId || contextWsId;
+  const deptId = canSelectDepartment ? urlDeptId : (contextDeptId ?? urlDeptId);
 
   const { data: project, isLoading, isError, error } = useProjectDetail(
     wsId || undefined,
@@ -48,11 +59,52 @@ export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProp
     projectId,
   );
 
+  const { canUpdate, canArchive } = useProjectAccess(wsId || undefined);
+
   const tabItems: TabItem[] = [
     { id: 'overview', label: 'Overview', icon: <Info /> },
     { id: 'activity', label: 'Activity', icon: <Activity /> },
     { id: 'settings', label: 'Settings', icon: <Settings /> },
   ];
+
+  if (contextLoading) {
+    return (
+      <div className="flex flex-col gap-6 animate-fade-in">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (isScopedUser && !hasAssignedDepartment) {
+    return (
+      <Card>
+        <CardBody className="py-16">
+          <EmptyState
+            icon={<AlertCircle className="h-6 w-6" />}
+            title="No department assigned"
+            description="No department is assigned to your account."
+            action={<Button variant="outline" onClick={onBack}>Back to Projects</Button>}
+          />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (canSelectDepartment && !deptId) {
+    return (
+      <Card>
+        <CardBody className="py-16">
+          <EmptyState
+            icon={<FolderKanban className="h-6 w-6" />}
+            title="Department required"
+            description="Select a department from the projects list to open this project."
+            action={<Button variant="outline" onClick={onBack}>Back to Projects</Button>}
+          />
+        </CardBody>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -71,13 +123,15 @@ export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProp
   }
 
   if (isError) {
+    const errorState = getProjectQueryErrorState(error, isScopedUser);
     return (
       <Card>
         <CardBody className="py-16">
           <EmptyState
-            icon={<AlertCircle className="h-6 w-6" />}
-            title="Failed to load project"
-            description={error instanceof Error ? error.message : 'An error occurred.'}
+            icon={errorState.isAccessDenied ? <ShieldBan className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
+            title={errorState.title}
+            description={errorState.description}
+            action={<Button variant="outline" onClick={onBack}>Back to Projects</Button>}
           />
         </CardBody>
       </Card>
@@ -95,9 +149,9 @@ export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProp
   }
 
   const actionItems: DropdownItem[] = [
-    { label: 'Edit', icon: <Edit2 className="h-4 w-4" />, onClick: () => setShowEdit(true) },
-    { divider: true },
-    { label: 'Archive', icon: <Archive className="h-4 w-4" />, danger: true, onClick: () => setShowArchive(true) },
+    ...(canUpdate ? [{ label: 'Edit', icon: <Edit2 className="h-4 w-4" />, onClick: () => setShowEdit(true) }] : []),
+    ...(canUpdate && canArchive ? [{ divider: true }] : []),
+    ...(canArchive ? [{ label: 'Archive', icon: <Archive className="h-4 w-4" />, danger: true, onClick: () => setShowArchive(true) }] : []),
   ];
 
   return (
@@ -130,9 +184,9 @@ export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProp
             </div>
           </div>
         </div>
-        <Can permission="PROJECT_UPDATE">
+        {actionItems.length > 0 && (
           <Dropdown trigger={<IconButton label="Actions" variant="ghost"><Edit2 className="h-4 w-4" /></IconButton>} items={actionItems} align="right" />
-        </Can>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -146,7 +200,7 @@ export function ProjectDetailsPage({ projectId, onBack }: ProjectDetailsPageProp
 
       {activeTab === 'overview' && <OverviewTab project={project} />}
       {activeTab === 'activity' && <ActivityTab />}
-      {activeTab === 'settings' && <SettingsTab project={project} onEdit={() => setShowEdit(true)} onArchive={() => setShowArchive(true)} />}
+      {activeTab === 'settings' && <SettingsTab project={project} canEdit={canUpdate} canArchive={canArchive} onEdit={() => setShowEdit(true)} onArchive={() => setShowArchive(true)} />}
 
       {showEdit && wsId && deptId && (
         <EditProjectModal open={showEdit} onClose={() => setShowEdit(false)} wsId={wsId} deptId={deptId} project={project} />
@@ -210,7 +264,7 @@ function ActivityTab() {
   );
 }
 
-function SettingsTab({ project, onEdit, onArchive }: { project: ProjectResponse; onEdit: () => void; onArchive: () => void }) {
+function SettingsTab({ project, canEdit, canArchive, onEdit, onArchive }: { project: ProjectResponse; canEdit: boolean; canArchive: boolean; onEdit: () => void; onArchive: () => void }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card>
@@ -220,19 +274,17 @@ function SettingsTab({ project, onEdit, onArchive }: { project: ProjectResponse;
           <SettingRow label="Manager" value={project.managerName ?? 'Unassigned'} />
           <SettingRow label="Status" value={project.status === 'ACTIVE' ? 'Active' : 'Archived'} />
           {project.priority && <SettingRow label="Priority" value={project.priority.toLowerCase()} />}
-          <Can permission="PROJECT_UPDATE">
+          {canEdit && (
             <Button variant="outline" fullWidth onClick={onEdit}>Edit Information</Button>
-          </Can>
+          )}
         </CardBody>
       </Card>
-      {project.status === 'ACTIVE' && (
+      {project.status === 'ACTIVE' && canArchive && (
         <Card className="border-danger-200 dark:border-danger-100">
           <CardBody className="space-y-3">
             <p className="text-section font-semibold text-danger-600 dark:text-danger-400">Danger Zone</p>
             <p className="text-caption text-text-secondary">Archive this project to remove it from active projects.</p>
-            <Can permission="PROJECT_DELETE">
-              <Button variant="danger" fullWidth onClick={onArchive}>Archive Project</Button>
-            </Can>
+            <Button variant="danger" fullWidth onClick={onArchive}>Archive Project</Button>
           </CardBody>
         </Card>
       )}

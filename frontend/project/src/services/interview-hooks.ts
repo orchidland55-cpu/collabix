@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { interviewService } from './interview-service';
-import type { CreateInterviewRequest, UpdateInterviewRequest, AddParticipantRequest, InterviewFeedbackRequest } from './interview-service';
+import type { CreateInterviewRequest, UpdateInterviewRequest, UpdateInterviewNotesRequest, AddParticipantRequest, InterviewFeedbackRequest } from './interview-service';
 
 const keys = {
   candidateInterviews: (wsId: string, deptId: string, candidateId: string) => ['interviews', wsId, deptId, candidateId] as const,
@@ -69,6 +69,17 @@ export function useUpdateInterview(wsId: string, deptId: string, candidateId: st
       qc.invalidateQueries({ queryKey: keys.candidateInterviews(wsId, deptId, candidateId) });
       qc.invalidateQueries({ queryKey: keys.detail(wsId, deptId, candidateId, interviewId) });
       qc.invalidateQueries({ queryKey: keys.upcoming(wsId, deptId) });
+    },
+  });
+}
+
+export function useUpdateInterviewNotes(wsId: string, deptId: string, candidateId: string, interviewId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UpdateInterviewNotesRequest) => interviewService.updateNotes(wsId, deptId, candidateId, interviewId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.detail(wsId, deptId, candidateId, interviewId) });
+      qc.invalidateQueries({ queryKey: keys.candidateInterviews(wsId, deptId, candidateId) });
     },
   });
 }

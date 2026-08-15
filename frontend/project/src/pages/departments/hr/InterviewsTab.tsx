@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calendar, CalendarClock, CalendarPlus, CheckCircle2, Loader2, XCircle, X, Star, Users, Pencil, Trash2 } from 'lucide-react';
-import { Card, CardBody, CardHeader, CardTitle } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { IconButton } from '../../../components/ui/IconButton';
@@ -15,11 +14,13 @@ import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../auth';
 import { useCandidatesList } from '../../../services/candidate-hooks';
 import { useInterviewsToday, useInterviewsWeek, useInterviewsUpcoming, useInterviewsCompleted, useInterviewStats } from '../../../services/interview-hooks';
-import { useAddInterviewParticipant, useRemoveInterviewParticipant } from '../../../services/interview-hooks';
 import { interviewService } from '../../../services/interview-service';
-import { useUsersList } from '../../../services/admin-hooks';
+import { InterviewDetailsDrawer } from './InterviewDetailsDrawer';
 import type { InterviewResponse, InterviewFeedbackRequest, CreateInterviewRequest, UpdateInterviewRequest } from '../../../services/interview-service';
-import { interviewTypeColor, interviewStatusColor, RECOMMENDATIONS, recommendationColor, INTERVIEW_TYPES, formatEnum, formatDate, formatTime } from './hr-constants';
+import { interviewTypeColor, interviewStatusColor, RECOMMENDATIONS, INTERVIEW_TYPES, formatEnum, formatDate, formatTime, toISOTimestamp, toDateInputValue, toTimeInputValue, todayDateInputValue, interviewScheduleSchema } from './hr-constants';
+
+type ScheduleField = 'candidateId' | 'position' | 'scheduledDate' | 'startTime' | 'endTime';
+type ScheduleFieldErrors = Partial<Record<ScheduleField, string>>;
 
 const viewTabs: TabItem[] = [
   { id: 'upcoming', label: 'Upcoming' },
@@ -35,8 +36,11 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
   const [feedbackForm, setFeedbackForm] = useState<InterviewFeedbackRequest>({ recommendation: 'HIRE' });
   const [scheduleTarget, setScheduleTarget] = useState<InterviewResponse | null | 'new'>(null);
   const [scheduleForm, setScheduleForm] = useState({
-    candidateId: '', type: 'HR', scheduledDate: '', startTime: '', endTime: '', location: '', meetingLink: '', title: '', description: '',
+    candidateId: '', type: 'EMPLOYEE', scheduledDate: '', startTime: '', endTime: '',
+    position: '',
+    location: '', meetingLink: '', title: '', description: '',
   });
+  const [scheduleErrors, setScheduleErrors] = useState<ScheduleFieldErrors>({});
 
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -47,11 +51,6 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
   const { data: week, isLoading: weekLoading } = useInterviewsWeek(wsId, deptId);
   const { data: completed, isLoading: completedLoading } = useInterviewsCompleted(wsId, deptId);
   const { data: candidatesData } = useCandidatesList(wsId, deptId);
-  const { data: usersData } = useUsersList();
-
-  const [participantUserId, setParticipantUserId] = useState('');
-  const addParticipant = useAddInterviewParticipant(wsId, deptId, detail?.candidateId ?? '', detail?.id ?? '');
-  const removeParticipant = useRemoveInterviewParticipant(wsId, deptId, detail?.candidateId ?? '', detail?.id ?? '');
 
   const loading = statsLoading || upcomingLoading || todayLoading || weekLoading || completedLoading;
 
@@ -96,17 +95,32 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
     onError: () => toast({ title: 'Failed to submit feedback', tone: 'danger' }),
   });
 
+  const invalidateCandidateInterviews = (candidateId: string) => {
+    qc.invalidateQueries({ queryKey: ['candidates', 'interviews', wsId, deptId, candidateId] });
+  };
+
   const createInterview = useMutation({
     mutationFn: ({ candidateId, data }: { candidateId: string; data: CreateInterviewRequest }) =>
       interviewService.create(wsId, deptId, candidateId, data),
-    onSuccess: () => { toast({ title: 'Interview scheduled', tone: 'success' }); setScheduleTarget(null); invalidateLists(); },
+    onSuccess: (_data, variables) => {
+      toast({ title: 'Interview scheduled', tone: 'success' });
+      setScheduleTarget(null);
+      invalidateLists();
+      invalidateCandidateInterviews(variables.candidateId);
+    },
     onError: () => toast({ title: 'Failed to schedule interview', tone: 'danger' }),
   });
 
   const updateInterview = useMutation({
     mutationFn: ({ candidateId, interviewId, data }: { candidateId: string; interviewId: string; data: UpdateInterviewRequest }) =>
       interviewService.update(wsId, deptId, candidateId, interviewId, data),
-    onSuccess: () => { toast({ title: 'Interview updated', tone: 'success' }); setScheduleTarget(null); setDetail(null); invalidateLists(); },
+    onSuccess: (_data, variables) => {
+      toast({ title: 'Interview updated', tone: 'success' });
+      setScheduleTarget(null);
+      setDetail(null);
+      invalidateLists();
+      invalidateCandidateInterviews(variables.candidateId);
+    },
     onError: () => toast({ title: 'Failed to update interview', tone: 'danger' }),
   });
 
@@ -117,17 +131,36 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
     onError: () => toast({ title: 'Failed to delete interview', tone: 'danger' }),
   });
 
+  const effectivePosition = () => scheduleForm.position.trim();
+
+  const clearFieldError = (field: ScheduleField) =>
+    setScheduleErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+
   const handleScheduleSubmit = () => {
     if (!scheduleTarget) return;
+    const result = interviewScheduleSchema.safeParse(scheduleForm);
+    if (!result.success) {
+      const fieldErrors = result.error.flatten().fieldErrors;
+      setScheduleErrors({
+        candidateId: fieldErrors.candidateId?.[0],
+        position: fieldErrors.position?.[0],
+        scheduledDate: fieldErrors.scheduledDate?.[0],
+        startTime: fieldErrors.startTime?.[0],
+        endTime: fieldErrors.endTime?.[0],
+      });
+      return;
+    }
+    setScheduleErrors({});
     const payload: CreateInterviewRequest = {
       type: scheduleForm.type as never,
-      title: scheduleForm.title || undefined,
-      description: scheduleForm.description || undefined,
-      scheduledDate: scheduleForm.scheduledDate || undefined,
-      startTime: scheduleForm.startTime || undefined,
-      endTime: scheduleForm.endTime || undefined,
-      location: scheduleForm.location || undefined,
-      meetingLink: scheduleForm.meetingLink || undefined,
+      position: effectivePosition(),
+      title: scheduleForm.title.trim() || undefined,
+      description: scheduleForm.description.trim() || undefined,
+      scheduledDate: toISOTimestamp(scheduleForm.scheduledDate),
+      startTime: toISOTimestamp(scheduleForm.scheduledDate, scheduleForm.startTime),
+      endTime: toISOTimestamp(scheduleForm.scheduledDate, scheduleForm.endTime),
+      location: scheduleForm.location.trim() || undefined,
+      meetingLink: scheduleForm.meetingLink.trim() || undefined,
     };
     if (scheduleTarget === 'new') {
       if (!scheduleForm.candidateId) return;
@@ -138,7 +171,8 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
   };
 
   const openSchedule = () => {
-    setScheduleForm({ candidateId: '', type: 'HR', scheduledDate: '', startTime: '', endTime: '', location: '', meetingLink: '', title: '', description: '' });
+    setScheduleForm({ candidateId: '', type: 'EMPLOYEE', scheduledDate: '', startTime: '', endTime: '', position: '', location: '', meetingLink: '', title: '', description: '' });
+    setScheduleErrors({});
     setScheduleTarget('new');
   };
 
@@ -146,14 +180,16 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
     setScheduleForm({
       candidateId: iv.candidateId,
       type: iv.type,
-      scheduledDate: iv.scheduledDate ?? '',
-      startTime: iv.startTime ?? '',
-      endTime: iv.endTime ?? '',
+      scheduledDate: toDateInputValue(iv.scheduledDate),
+      startTime: toTimeInputValue(iv.startTime),
+      endTime: toTimeInputValue(iv.endTime),
+      position: iv.position ?? '',
       location: iv.location ?? '',
       meetingLink: iv.meetingLink ?? '',
       title: iv.title ?? '',
       description: iv.description ?? '',
     });
+    setScheduleErrors({});
     setScheduleTarget(iv);
   };
 
@@ -267,113 +303,27 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
         </div>
       )}
 
-      <Modal
-        open={!!detail}
-        onClose={() => setDetail(null)}
-        title={detail ? `Interview — ${candidateName(detail.candidateId)}` : ''}
-        description={detail ? `${formatEnum(detail.type)} • ${formatEnum(detail.status)}` : ''}
-        size="xl"
-        footer={<Button variant="outline" onClick={() => setDetail(null)}>Close</Button>}
-      >
-        {detail && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={(interviewTypeColor[detail.type] ?? 'neutral') as never} variant="soft">{formatEnum(detail.type)}</Badge>
-              <Badge tone={(interviewStatusColor[detail.status] ?? 'neutral') as never} variant="soft">{formatEnum(detail.status)}</Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Scheduled Date" value={formatDate(detail.scheduledDate)} />
-              <Field label="Time" value={detail.startTime ? `${formatTime(detail.startTime)}${detail.endTime ? ` - ${formatTime(detail.endTime)}` : ''}` : '-'} />
-              <Field label="Location" value={detail.location || '-'} />
-              <Field label="Meeting Link" value={detail.meetingLink || '-'} />
-              {detail.description && <Field label="Description" value={detail.description} />}
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Participants</CardTitle>
-              </CardHeader>
-              <CardBody className="flex flex-col gap-3">
-                <Can permission="INTERVIEW_CREATE">
-                  <div className="flex items-center gap-2">
-                    <Select
-                      containerClassName="flex-1"
-                      value={participantUserId}
-                      onChange={(e) => setParticipantUserId(e.target.value)}
-                      options={[{ value: '', label: 'Select user to add...' }, ...(usersData ?? []).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}${u.email ? ` (${u.email})` : ''}` }))]}
-                    />
-                    <Button size="sm" disabled={!participantUserId}
-                      onClick={() => {
-                        addParticipant.mutate({ userId: participantUserId, role: 'INTERVIEWER' }, {
-                          onSuccess: () => { toast({ title: 'Participant added', tone: 'success' }); setParticipantUserId(''); },
-                          onError: () => toast({ title: 'Failed to add participant', tone: 'danger' }),
-                        });
-                      }}>Add</Button>
-                  </div>
-                </Can>
-                {detail.participants?.length === 0 ? (
-                  <p className="text-caption text-text-tertiary">No participants added.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {detail.participants?.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-border-subtle">
-                        <div>
-                          <p className="text-caption font-medium text-text-primary">{p.userFirstName} {p.userLastName}</p>
-                          <p className="text-2xs text-text-tertiary">{p.userEmail}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge tone="neutral" variant="soft">{formatEnum(p.role)}</Badge>
-                          <Can permission="INTERVIEW_DELETE">
-                            <IconButton label="Remove participant" variant="ghost" size="sm" className="text-danger-600"
-                              onClick={() => removeParticipant.mutate(p.id, { onSuccess: () => toast({ title: 'Participant removed', tone: 'success' }) })}>
-                              <X className="h-4 w-4" />
-                            </IconButton>
-                          </Can>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Star className="h-4 w-4" /> Feedback</CardTitle>
-              </CardHeader>
-              <CardBody>
-                {detail.feedbacks?.length === 0 ? (
-                  <p className="text-caption text-text-tertiary">No feedback submitted yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {detail.feedbacks?.map((f) => (
-                      <div key={f.id} className="p-3 rounded-lg border border-border-subtle">
-                        <div className="flex items-center justify-between">
-                          <Badge tone={(recommendationColor[f.recommendation] ?? 'neutral') as never} variant="soft">{formatEnum(f.recommendation)}</Badge>
-                          {f.rating != null && <span className="text-caption font-medium text-text-primary">{f.rating}/5</span>}
-                        </div>
-                        {f.notes && <p className="text-caption text-text-secondary mt-2">{f.notes}</p>}
-                        <p className="text-2xs text-text-tertiary mt-1">Submitted {f.submittedAt}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          </div>
-        )}
-      </Modal>
+      {detail && (
+        <InterviewDetailsDrawer
+          key={detail.id}
+          wsId={wsId}
+          deptId={deptId}
+          interview={detail}
+          open
+          onClose={() => setDetail(null)}
+          onEdit={(iv) => { openEdit(iv); setDetail(null); }}
+        />
+      )}
 
       <Modal
         open={!!scheduleTarget}
-        onClose={() => setScheduleTarget(null)}
+        onClose={() => { setScheduleTarget(null); setScheduleErrors({}); }}
         title={scheduleTarget === 'new' ? 'Schedule Interview' : scheduleTarget ? `Edit Interview — ${candidateName(scheduleTarget.candidateId)}` : ''}
         description={scheduleTarget === 'new' ? 'Create a new interview for a candidate.' : ''}
         footer={
           <>
             <Button variant="outline" onClick={() => setScheduleTarget(null)}>Cancel</Button>
-            <Button onClick={handleScheduleSubmit}
-              disabled={scheduleTarget === 'new' && !scheduleForm.candidateId || !scheduleForm.scheduledDate}>
+            <Button onClick={handleScheduleSubmit}>
               {scheduleTarget === 'new' ? 'Schedule' : 'Save'}
             </Button>
           </>
@@ -381,18 +331,34 @@ export function InterviewsTab({ wsId, deptId }: { wsId: string; deptId: string }
       >
         <div className="grid grid-cols-2 gap-3">
           {scheduleTarget === 'new' ? (
-            <Select label="Candidate" value={scheduleForm.candidateId} onChange={(e) => setScheduleForm({ ...scheduleForm, candidateId: e.target.value })}
+            <Select label="Candidate *" value={scheduleForm.candidateId} invalid={!!scheduleErrors.candidateId} errorText={scheduleErrors.candidateId}
+              onChange={(e) => {
+                const c = candidates.find((x) => x.id === e.target.value);
+                setScheduleForm((prev) => ({
+                  ...prev,
+                  candidateId: e.target.value,
+                  position: prev.position ? prev.position : (c?.position ?? ''),
+                }));
+                clearFieldError('candidateId');
+              }}
               options={[{ value: '', label: 'Select candidate...' }, ...candidates.filter((c) => c.currentStatus !== 'HIRED' && c.currentStatus !== 'REJECTED' && c.currentStatus !== 'WITHDRAWN').map((c) => ({ value: c.id, label: `${c.firstName} ${c.lastName} — ${c.position}` }))]} />
           ) : (
             <div className="col-span-2">
               <Input label="Candidate" value={candidateName(editCandidateId)} disabled />
             </div>
           )}
-          <Select label="Type" value={scheduleForm.type} onChange={(e) => setScheduleForm({ ...scheduleForm, type: e.target.value })}
+          <Select label="Type *" value={scheduleForm.type} onChange={(e) => setScheduleForm({ ...scheduleForm, type: e.target.value })}
             options={INTERVIEW_TYPES.map((t) => ({ value: t, label: formatEnum(t) }))} />
-          <Input label="Date" type="date" value={scheduleForm.scheduledDate} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduledDate: e.target.value })} />
-          <Input label="Start Time" type="time" value={scheduleForm.startTime} onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })} />
-          <Input label="End Time" type="time" value={scheduleForm.endTime} onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })} />
+          <div className="col-span-2">
+            <Input label="Position *" placeholder="Enter position..." value={scheduleForm.position} invalid={!!scheduleErrors.position} errorText={scheduleErrors.position}
+              onChange={(e) => { setScheduleForm({ ...scheduleForm, position: e.target.value }); clearFieldError('position'); }} />
+          </div>
+          <Input label="Date *" type="date" min={todayDateInputValue()} value={scheduleForm.scheduledDate} invalid={!!scheduleErrors.scheduledDate} errorText={scheduleErrors.scheduledDate}
+            onChange={(e) => { setScheduleForm({ ...scheduleForm, scheduledDate: e.target.value }); clearFieldError('scheduledDate'); }} />
+          <Input label="Start Time *" type="time" value={scheduleForm.startTime} invalid={!!scheduleErrors.startTime} errorText={scheduleErrors.startTime}
+            onChange={(e) => { setScheduleForm({ ...scheduleForm, startTime: e.target.value }); clearFieldError('startTime'); }} />
+          <Input label="End Time *" type="time" value={scheduleForm.endTime} invalid={!!scheduleErrors.endTime} errorText={scheduleErrors.endTime}
+            onChange={(e) => { setScheduleForm({ ...scheduleForm, endTime: e.target.value }); clearFieldError('endTime'); }} />
           <div className="col-span-2">
             <Input label="Location" placeholder="e.g. Meeting Room 2 / Zoom" value={scheduleForm.location} onChange={(e) => setScheduleForm({ ...scheduleForm, location: e.target.value })} />
           </div>
@@ -461,15 +427,6 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
     <div className="flex flex-col gap-1 p-3 rounded-lg border border-border-subtle">
       <span className="text-2xs text-text-tertiary">{label}</span>
       <span className={`text-section font-bold ${toneClass[tone] ?? 'text-text-primary'}`}>{value}</span>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1 p-3 rounded-lg border border-border-subtle">
-      <span className="text-2xs text-text-tertiary">{label}</span>
-      <span className="text-caption text-text-primary break-words">{value}</span>
     </div>
   );
 }

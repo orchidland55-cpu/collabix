@@ -22,9 +22,13 @@ import { IconButton } from '../../../components/ui/IconButton';
 import { Dropdown } from '../../../components/ui/Dropdown';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { cn } from '../../../lib/cn';
-import { useDocumentsList } from '../../../services/document-hooks';
+import { useWorkspaceId } from '../../../hooks/useWorkspaceId';
+import { useWorkspacesList } from '../../../services/workspace-hooks';
+import { useDocumentsList, useWorkspaceDocuments } from '../../../services/document-hooks';
+import { useWorkspaceProjects } from '../../../services/project-hooks';
 import { getFileIcon, formatDate, formatFileSize } from '../types/document-types';
 import type { DocumentResponse } from '../types/document-types';
+import type { ProjectResponse } from '../../projects/projects-types';
 import { UploadDocumentModal, EditDocumentModal, DeleteDocumentModal, ArchiveDocumentModal } from './DocumentModals';
 
 type ViewMode = 'grid' | 'table' | 'list';
@@ -32,15 +36,44 @@ type ViewMode = 'grid' | 'table' | 'list';
 export function DocumentsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const workspaceId = searchParams.get('ws') ?? '';
+  const urlWorkspaceId = useWorkspaceId();
+  const { data: workspaces } = useWorkspacesList();
+  const workspaceId = urlWorkspaceId || workspaces?.[0]?.id || '';
   const departmentId = searchParams.get('dept') ?? '';
   const projectId = searchParams.get('proj') ?? '';
+  const scopedToProject = !!departmentId && !!projectId;
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
   const [modal, setModal] = useState<{ type: string; doc?: DocumentResponse } | null>(null);
 
-  const { data: docsData, isLoading, isError } = useDocumentsList(workspaceId, departmentId, projectId);
+  const { data: projectDocsData, isLoading: projectLoading, isError: projectError } = useDocumentsList(
+    workspaceId,
+    departmentId,
+    projectId,
+  );
+  const { data: workspaceDocsData, isLoading: workspaceLoading, isError: workspaceError } = useWorkspaceDocuments(workspaceId);
+  const { data: projectsData } = useWorkspaceProjects(workspaceId);
+
+  const projectById = useMemo(() => {
+    const map = new Map<string, ProjectResponse>();
+    for (const project of projectsData?.content ?? []) {
+      map.set(project.id, project);
+    }
+    return map;
+  }, [projectsData]);
+
+  const resolveDocumentScope = (doc: DocumentResponse) => {
+    if (scopedToProject) {
+      return { deptId: departmentId, projId: projectId };
+    }
+    const project = projectById.get(doc.projectId);
+    return { deptId: project?.departmentId ?? '', projId: doc.projectId };
+  };
+
+  const docsData = scopedToProject ? projectDocsData : workspaceDocsData;
+  const isLoading = scopedToProject ? projectLoading : workspaceLoading;
+  const isError = scopedToProject ? projectError : workspaceError;
 
   const documents = useMemo(() => {
     if (!docsData?.content) return [];
@@ -93,6 +126,15 @@ export function DocumentsPage() {
       </div>
     );
   }
+
+  const modalScope = modal?.doc ? resolveDocumentScope(modal.doc) : null;
+  const viewProps = {
+    workspaceId,
+    scopedToProject,
+    departmentId,
+    projectId,
+    projectById,
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -177,11 +219,11 @@ export function DocumentsPage() {
           description="Try adjusting your search or upload a new document."
         />
       ) : viewMode === 'grid' ? (
-        <GridView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} />
+        <GridView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} {...viewProps} />
       ) : viewMode === 'list' ? (
-        <ListView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} />
+        <ListView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} {...viewProps} />
       ) : (
-        <TableView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} />
+        <TableView documents={filteredDocuments} onAction={setModal} onNavigate={navigate} {...viewProps} />
       )}
 
       {modal?.type === 'upload' && (
@@ -189,37 +231,37 @@ export function DocumentsPage() {
           isOpen
           onClose={() => setModal(null)}
           wsId={workspaceId}
-          deptId={departmentId}
-          projId={projectId}
+          deptId={scopedToProject ? departmentId : undefined}
+          projId={scopedToProject ? projectId : undefined}
         />
       )}
-      {modal?.type === 'edit' && modal.doc && (
+      {modal?.type === 'edit' && modal.doc && modalScope && (
         <EditDocumentModal
           isOpen
           onClose={() => setModal(null)}
           wsId={workspaceId}
-          deptId={departmentId}
-          projId={projectId}
+          deptId={modalScope.deptId}
+          projId={modalScope.projId}
           document={modal.doc}
         />
       )}
-      {modal?.type === 'delete' && modal.doc && (
+      {modal?.type === 'delete' && modal.doc && modalScope && (
         <DeleteDocumentModal
           isOpen
           onClose={() => setModal(null)}
           wsId={workspaceId}
-          deptId={departmentId}
-          projId={projectId}
+          deptId={modalScope.deptId}
+          projId={modalScope.projId}
           document={modal.doc}
         />
       )}
-      {modal?.type === 'archive' && modal.doc && (
+      {modal?.type === 'archive' && modal.doc && modalScope && (
         <ArchiveDocumentModal
           isOpen
           onClose={() => setModal(null)}
           wsId={workspaceId}
-          deptId={departmentId}
-          projId={projectId}
+          deptId={modalScope.deptId}
+          projId={modalScope.projId}
           document={modal.doc}
         />
       )}
@@ -251,15 +293,42 @@ function StatCard({
   );
 }
 
-function GridView({ documents, onAction, onNavigate }: {
+function documentDetailPath(
+  doc: DocumentResponse,
+  workspaceId: string,
+  scopedToProject: boolean,
+  departmentId: string,
+  projectId: string,
+  projectById: Map<string, ProjectResponse>,
+): string {
+  if (scopedToProject) {
+    return `./${doc.id}?ws=${workspaceId}&dept=${departmentId}&proj=${projectId}`;
+  }
+  const project = projectById.get(doc.projectId);
+  const dept = project?.departmentId ?? '';
+  return `./${doc.id}?ws=${workspaceId}&dept=${dept}&proj=${doc.projectId}`;
+}
+
+function GridView({ documents, onAction, onNavigate, workspaceId, scopedToProject, departmentId, projectId, projectById }: {
   documents: DocumentResponse[];
   onAction: (m: { type: string; doc: DocumentResponse }) => void;
   onNavigate: (path: string) => void;
+  workspaceId: string;
+  scopedToProject: boolean;
+  departmentId: string;
+  projectId: string;
+  projectById: Map<string, ProjectResponse>;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {documents.map((doc) => (
-        <DocumentCard key={doc.id} document={doc} onAction={onAction} onNavigate={onNavigate} />
+        <DocumentCard
+          key={doc.id}
+          document={doc}
+          onAction={onAction}
+          onNavigate={onNavigate}
+          detailPath={documentDetailPath(doc, workspaceId, scopedToProject, departmentId, projectId, projectById)}
+        />
       ))}
     </div>
   );
@@ -275,10 +344,11 @@ const fileTypeEmoji: Record<string, string> = {
   other: '📎',
 };
 
-function DocumentCard({ document, onAction, onNavigate }: {
+function DocumentCard({ document, onAction, onNavigate, detailPath }: {
   document: DocumentResponse;
   onAction: (m: { type: string; doc: DocumentResponse }) => void;
   onNavigate: (path: string) => void;
+  detailPath: string;
 }) {
   const statusColor: Record<string, string> = {
     ACTIVE: 'success',
@@ -291,7 +361,7 @@ function DocumentCard({ document, onAction, onNavigate }: {
     <Card className="hover:border-border-default transition-colors flex flex-col">
       <div
         className="h-32 bg-gradient-to-br from-accent-100 to-accent-50 dark:from-accent-900 dark:to-accent-800 flex items-center justify-center border-b border-border-subtle cursor-pointer"
-        onClick={() => onNavigate(`./${document.id}?ws=${document.projectId}`)}
+        onClick={() => onNavigate(detailPath)}
       >
         <span className="text-5xl">{icon}</span>
       </div>
@@ -300,7 +370,7 @@ function DocumentCard({ document, onAction, onNavigate }: {
         <div className="flex-1 min-w-0">
           <h3
             className="text-body font-semibold text-text-primary truncate cursor-pointer hover:text-accent-600"
-            onClick={() => onNavigate(`./${document.id}?ws=${document.projectId}`)}
+            onClick={() => onNavigate(detailPath)}
           >
             {document.title}
           </h3>
@@ -324,7 +394,7 @@ function DocumentCard({ document, onAction, onNavigate }: {
             {document.status}
           </Badge>
           <div className="flex items-center gap-1">
-            <IconButton label="View" variant="ghost" onClick={() => onNavigate(`./${document.id}`)}>
+            <IconButton label="View" variant="ghost" onClick={() => onNavigate(detailPath)}>
               <Eye className="h-4 w-4" />
             </IconButton>
             <IconButton label="Edit" variant="ghost" onClick={() => onAction({ type: 'edit', doc: document })}>
@@ -345,24 +415,38 @@ function DocumentCard({ document, onAction, onNavigate }: {
   );
 }
 
-function ListView({ documents, onAction, onNavigate }: {
+type DocumentViewProps = {
   documents: DocumentResponse[];
   onAction: (m: { type: string; doc: DocumentResponse }) => void;
   onNavigate: (path: string) => void;
-}) {
+  workspaceId: string;
+  scopedToProject: boolean;
+  departmentId: string;
+  projectId: string;
+  projectById: Map<string, ProjectResponse>;
+};
+
+function ListView({ documents, onAction, onNavigate, workspaceId, scopedToProject, departmentId, projectId, projectById }: DocumentViewProps) {
   return (
     <div className="space-y-2">
       {documents.map((doc) => (
-        <ListRow key={doc.id} document={doc} onAction={onAction} onNavigate={onNavigate} />
+        <ListRow
+          key={doc.id}
+          document={doc}
+          onAction={onAction}
+          onNavigate={onNavigate}
+          detailPath={documentDetailPath(doc, workspaceId, scopedToProject, departmentId, projectId, projectById)}
+        />
       ))}
     </div>
   );
 }
 
-function ListRow({ document, onAction, onNavigate }: {
+function ListRow({ document, onAction, onNavigate, detailPath }: {
   document: DocumentResponse;
   onAction: (m: { type: string; doc: DocumentResponse }) => void;
   onNavigate: (path: string) => void;
+  detailPath: string;
 }) {
   const statusColor: Record<string, string> = {
     ACTIVE: 'success',
@@ -376,7 +460,7 @@ function ListRow({ document, onAction, onNavigate }: {
       <div className="text-2xl">{icon}</div>
       <div
         className="flex-1 min-w-0 cursor-pointer"
-        onClick={() => onNavigate(`./${document.id}`)}
+        onClick={() => onNavigate(detailPath)}
       >
         <h4 className="text-body font-medium text-text-primary truncate">{document.title}</h4>
         <p className="text-caption text-text-secondary">{document.fileName} • {formatFileSize(document.fileSize)}</p>
@@ -388,7 +472,7 @@ function ListRow({ document, onAction, onNavigate }: {
       </div>
 
       <div className="flex items-center gap-1">
-        <IconButton label="View" variant="ghost" onClick={() => onNavigate(`./${document.id}`)}>
+        <IconButton label="View" variant="ghost" onClick={() => onNavigate(detailPath)}>
           <Eye className="h-4 w-4" />
         </IconButton>
         <IconButton label="Edit" variant="ghost" onClick={() => onAction({ type: 'edit', doc: document })}>
@@ -407,11 +491,7 @@ function ListRow({ document, onAction, onNavigate }: {
   );
 }
 
-function TableView({ documents, onAction, onNavigate }: {
-  documents: DocumentResponse[];
-  onAction: (m: { type: string; doc: DocumentResponse }) => void;
-  onNavigate: (path: string) => void;
-}) {
+function TableView({ documents, onAction, onNavigate, workspaceId, scopedToProject, departmentId, projectId, projectById }: DocumentViewProps) {
   const statusColor: Record<string, string> = {
     ACTIVE: 'success',
     ARCHIVED: 'neutral',
@@ -432,12 +512,14 @@ function TableView({ documents, onAction, onNavigate }: {
           </tr>
         </thead>
         <tbody>
-          {documents.map((doc) => (
+          {documents.map((doc) => {
+            const detailPath = documentDetailPath(doc, workspaceId, scopedToProject, departmentId, projectId, projectById);
+            return (
             <tr key={doc.id} className="border-b border-border-subtle hover:bg-surface-2 transition-colors">
               <td className="px-4 py-3">
                 <div
                   className="cursor-pointer"
-                  onClick={() => onNavigate(`./${doc.id}`)}
+                  onClick={() => onNavigate(detailPath)}
                 >
                   <p className="text-body font-medium text-text-primary">{doc.title}</p>
                   <p className="text-caption text-text-tertiary">{doc.fileName}</p>
@@ -451,7 +533,7 @@ function TableView({ documents, onAction, onNavigate }: {
               <td className="px-4 py-3 text-body text-text-secondary">{formatDate(doc.updatedAt)}</td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
-                  <IconButton label="View" variant="ghost" onClick={() => onNavigate(`./${doc.id}`)}>
+                  <IconButton label="View" variant="ghost" onClick={() => onNavigate(detailPath)}>
                     <Eye className="h-4 w-4" />
                   </IconButton>
                   <IconButton label="Edit" variant="ghost" onClick={() => onAction({ type: 'edit', doc })}>
@@ -468,7 +550,8 @@ function TableView({ documents, onAction, onNavigate }: {
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

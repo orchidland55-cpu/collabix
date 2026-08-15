@@ -37,7 +37,7 @@ export function useCandidateInterviews(wsId: string, deptId: string, candidateId
 
 export function useCreateCandidate(wsId: string, deptId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: CreateCandidateRequest) => candidateService.create(wsId, deptId, data), onSuccess: () => qc.invalidateQueries({ queryKey: keys.all(wsId, deptId) }) });
+  return useMutation({ mutationFn: (data: CreateCandidateRequest) => candidateService.create(wsId, deptId, data), onSuccess: () => { qc.invalidateQueries({ queryKey: keys.all(wsId, deptId) }); qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) }); } });
 }
 
 export function useUpdateCandidate(wsId: string, deptId: string, candidateId: string) {

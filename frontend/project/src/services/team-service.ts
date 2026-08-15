@@ -65,6 +65,11 @@ export const deleteTeamPermanently = (workspaceId: string, departmentId: string,
 export const restoreTeam = (workspaceId: string, departmentId: string, teamId: string) =>
   apiClient.put<TeamResponse>(`/workspaces/${workspaceId}/departments/${departmentId}/teams/${teamId}/restore`);
 
+export const removeTeamMember = (workspaceId: string, departmentId: string, teamId: string, userId: string) =>
+  apiClient.delete<void>(
+    `/workspaces/${workspaceId}/departments/${departmentId}/teams/${teamId}/members/${userId}`,
+  );
+
 export const teamService = (wsId: string) => ({
   listByDepartment: (deptId: string) => listTeamsByDepartment(wsId, deptId),
 });

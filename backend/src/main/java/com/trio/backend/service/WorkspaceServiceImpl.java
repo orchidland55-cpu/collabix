@@ -519,6 +519,11 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         response.setTeamCount(teamCount);
         response.setProjectCount(projectCount);
 
+        User user = getAuthenticatedUser();
+        workspaceMemberRepository
+                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspace.getId(), user.getId())
+                .ifPresent(member -> response.setMyRole(member.getRole()));
+
         return response;
     }
 

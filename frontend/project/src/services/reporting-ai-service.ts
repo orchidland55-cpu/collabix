@@ -3,10 +3,12 @@ import type { PageResponse } from '../types/api';
 
 export interface ReportingGenerateRequest {
   workspaceId: string;
-  departmentId: string;
+  departmentId?: string;
   projectId?: string;
+  teamId?: string;
+  scope?: 'WORKSPACE' | 'DEPARTMENT' | 'PROJECT' | 'TEAM';
   title: string;
-  reportType: 'EXECUTIVE_SUMMARY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'CUSTOM';
+  reportType: 'EXECUTIVE' | 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'DEPARTMENT' | 'WORKSPACE' | 'PROJECT' | 'CUSTOM';
   periodStart?: string;
   periodEnd?: string;
 }
@@ -83,5 +85,8 @@ export function reportingAIService() {
       if (size != null) params.size = size;
       return apiClient.get<PageResponse<ReportingResponse>>(`${base}/history`, { params });
     },
+
+    getById: (reportId: string, workspaceId: string) =>
+      apiClient.get<ReportingResponse>(`${base}/${reportId}`, { params: { workspaceId } }),
   };
 }

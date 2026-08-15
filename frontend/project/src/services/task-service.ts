@@ -24,15 +24,29 @@ function taskBase(wsId: string, deptId: string, projId: string) {
   return `/workspaces/${wsId}/departments/${deptId}/projects/${projId}/tasks`;
 }
 
+function toBackendStatusFilter(status?: string): string | undefined {
+  if (!status) return undefined;
+  const map: Record<string, string> = {
+    todo: 'ACTIVE',
+    'in-progress': 'IN_PROGRESS',
+    'in-review': 'IN_REVIEW',
+    blocked: 'BLOCKED',
+    completed: 'COMPLETED',
+    archived: 'ARCHIVED',
+    cancelled: 'CANCELLED',
+  };
+  return map[status] ?? status.toUpperCase().replace(/-/g, '_');
+}
+
 export const taskService = {
   list: (wsId: string, deptId: string, projId: string, params?: {
     search?: string; status?: string; priority?: string; assigneeId?: string; page?: number; size?: number;
   }) => {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
-    if (params?.status) query.set('status', params.status);
+    if (params?.status) query.set('status', toBackendStatusFilter(params.status)!);
     if (params?.priority) query.set('priority', params.priority);
-    if (params?.assigneeId) query.set('assigneeId', params.assigneeId);
+    if (params?.assigneeId) query.set('assignee', params.assigneeId);
     if (params?.page != null) query.set('page', String(params.page));
     if (params?.size != null) query.set('size', String(params.size));
     const qs = query.toString();

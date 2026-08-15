@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   Trash2,
   UserPlus,
+  MoreHorizontal,
+  UserMinus,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Card, CardBody } from '../../components/ui/Card';
@@ -18,10 +20,12 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingOverlay } from '../../components/ui/Skeleton';
+import { Dropdown } from '../../components/ui/Dropdown';
 import { cn } from '../../lib/cn';
 import { useToast } from '../../components/ui/Toast';
+import { Can } from '../auth';
 import { useWorkspaceId } from '../../hooks/useWorkspaceId';
-import { useWorkspaceUsers, useAssignMemberToTeam } from '../../services/team-hooks';
+import { useWorkspaceUsers, useAssignMemberToTeam, useRemoveMemberFromTeam } from '../../services/team-hooks';
 import { UserStatus } from '../../types';
 import type { UserResponse } from '../../types';
 import type { Team } from './types';
@@ -45,7 +49,10 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
   const status = statusBadge[team.status];
   const wsId = useWorkspaceId();
   const { data: users, isLoading: usersLoading } = useWorkspaceUsers(wsId);
+  const removeMember = useRemoveMemberFromTeam(wsId);
+  const { toast } = useToast();
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const memberRows = (users ?? [])
     .filter((u) => u.teamId === team.id)
@@ -56,6 +63,22 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
       email: u.email,
       avatar: u.profilePicture,
     }));
+
+  const handleRemove = async () => {
+    if (!removeTarget) return;
+    try {
+      await removeMember.mutateAsync({
+        departmentId: team.departmentId,
+        teamId: team.id,
+        userId: removeTarget.id,
+      });
+      toast({ title: 'Member removed from team', tone: 'success' });
+      setRemoveTarget(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to remove member';
+      toast({ title: msg, tone: 'danger' });
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -100,7 +123,7 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
           <section>
             <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-text-tertiary">Statistics</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <StatTile icon={Users} tone="accent" label="Members" value={team.memberCount} />
+              <StatTile icon={Users} tone="accent" label="Members" value={memberRows.length} />
               <StatTile icon={Shield} tone="info" label="Created" value={team.createdAt || 'No data'} />
             </div>
           </section>
@@ -133,6 +156,20 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
                       <p className="text-body font-medium text-text-primary truncate">{m.name}</p>
                       <p className="text-2xs text-text-tertiary truncate">{m.role} · {m.email}</p>
                     </div>
+                    <Can permission="TEAM_MEMBER_REMOVE">
+                      <Dropdown
+                        trigger={<IconButton label="Member actions" variant="ghost"><MoreHorizontal className="h-4 w-4" /></IconButton>}
+                        items={[
+                          {
+                            label: 'Remove from team',
+                            icon: <UserMinus className="h-4 w-4" />,
+                            danger: true,
+                            onClick: () => setRemoveTarget({ id: m.id, name: m.name }),
+                          },
+                        ]}
+                        align="right"
+                      />
+                    </Can>
                   </div>
                 ))}
               </div>
@@ -172,6 +209,21 @@ export function TeamDetailsPanel({ team, onClose, onAction }: Props) {
         </div>
       </div>
       {addMemberOpen && <AddMemberModal team={team} onClose={() => setAddMemberOpen(false)} />}
+      {removeTarget && (
+        <Modal open onClose={() => setRemoveTarget(null)} title="Remove member from team?" size="sm">
+          <p className="text-body text-text-secondary">
+            <span className="font-medium text-text-primary">{removeTarget.name}</span> will be removed from{' '}
+            <span className="font-medium text-text-primary">{team.name}</span>. Their Collabix account and workspace
+            membership will not be affected.
+          </p>
+          <div className="mt-5 flex items-center justify-end gap-3 border-t border-border-subtle pt-4">
+            <Button variant="outline" onClick={() => setRemoveTarget(null)}>Cancel</Button>
+            <Button variant="danger" onClick={handleRemove} disabled={removeMember.isPending} leftIcon={<UserMinus className="h-4 w-4" />}>
+              Remove from team
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>,
     document.body,
   );

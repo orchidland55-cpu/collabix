@@ -30,8 +30,8 @@ public class KnowledgeDataCollector {
 
         String searchTerm = extractKeywords(question);
 
-        List<Map<String, Object>> documentResults = searchDocuments(workspaceId, projectId, searchTerm);
-        List<Map<String, Object>> knowledgeResults = searchKnowledgeBase(workspaceId, projectId, searchTerm);
+        List<Map<String, Object>> documentResults = searchDocuments(workspaceId, departmentId, projectId, searchTerm);
+        List<Map<String, Object>> knowledgeResults = searchKnowledgeBase(workspaceId, departmentId, projectId, searchTerm);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("workspaceName", workspace.getName());
@@ -52,7 +52,7 @@ public class KnowledgeDataCollector {
         return data;
     }
 
-    public List<Map<String, Object>> searchDocuments(UUID workspaceId, UUID projectId, String searchTerm) {
+    public List<Map<String, Object>> searchDocuments(UUID workspaceId, UUID departmentId, UUID projectId, String searchTerm) {
         if (searchTerm == null || searchTerm.isBlank()) {
             return List.of();
         }
@@ -84,12 +84,13 @@ public class KnowledgeDataCollector {
         }
 
         return combined.stream()
+                .filter(doc -> departmentId == null || doc.getProject().getDepartment().getId().equals(departmentId))
                 .limit(MAX_RESULTS)
                 .map(this::formatDocument)
                 .collect(Collectors.toList());
     }
 
-    public List<Map<String, Object>> searchKnowledgeBase(UUID workspaceId, UUID projectId, String searchTerm) {
+    public List<Map<String, Object>> searchKnowledgeBase(UUID workspaceId, UUID departmentId, UUID projectId, String searchTerm) {
         if (searchTerm == null || searchTerm.isBlank()) {
             return List.of();
         }
@@ -104,6 +105,7 @@ public class KnowledgeDataCollector {
         }
 
         return articles.stream()
+                .filter(kb -> departmentId == null || kb.getProject().getDepartment().getId().equals(departmentId))
                 .limit(MAX_RESULTS)
                 .map(this::formatKnowledgeBase)
                 .collect(Collectors.toList());

@@ -31,12 +31,14 @@ export interface InterviewResponse {
   type: InterviewType;
   status: InterviewStatus;
   title?: string;
+  position?: string;
   description?: string;
   scheduledDate?: string;
   startTime?: string;
   endTime?: string;
   location?: string;
   meetingLink?: string;
+  notes?: string;
   archived: boolean;
   participants: InterviewParticipantResponse[];
   feedbacks: InterviewFeedbackResponse[];
@@ -47,6 +49,7 @@ export interface InterviewResponse {
 export interface CreateInterviewRequest {
   type: InterviewType;
   title?: string;
+  position?: string;
   description?: string;
   scheduledDate?: string;
   startTime?: string;
@@ -58,6 +61,7 @@ export interface CreateInterviewRequest {
 export interface UpdateInterviewRequest {
   type?: InterviewType;
   title?: string;
+  position?: string;
   description?: string;
   scheduledDate?: string;
   startTime?: string;
@@ -69,6 +73,10 @@ export interface UpdateInterviewRequest {
 export interface AddParticipantRequest {
   userId: string;
   role?: string;
+}
+
+export interface UpdateInterviewNotesRequest {
+  notes?: string;
 }
 
 export interface InterviewFeedbackRequest {
@@ -107,6 +115,9 @@ export const interviewService = {
 
   update: (wsId: string, deptId: string, candidateId: string, interviewId: string, data: UpdateInterviewRequest) =>
     apiClient.put<InterviewResponse>(`${candidateBase(wsId, deptId, candidateId)}/${interviewId}`, data),
+
+  updateNotes: (wsId: string, deptId: string, candidateId: string, interviewId: string, data: UpdateInterviewNotesRequest) =>
+    apiClient.put<InterviewResponse>(`${candidateBase(wsId, deptId, candidateId)}/${interviewId}/notes`, data),
 
   cancel: (wsId: string, deptId: string, candidateId: string, interviewId: string) =>
     apiClient.post<InterviewResponse>(`${candidateBase(wsId, deptId, candidateId)}/${interviewId}/cancel`),

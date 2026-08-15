@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Clock, Star } from 'lucide-react';
 import { HistoryHeader } from './HistoryHeader';
 import { HistorySearch } from './HistorySearch';
@@ -12,6 +12,7 @@ import { HistoryErrorCard } from './HistoryErrorCard';
 import { type HistoryItem, type ActivityCategory } from './HistoryTypes';
 import { type ReportingResponse } from '../../../services/reporting-ai-service';
 import { useAIReportHistory } from '../../../services/reporting-ai-hooks';
+import { aiPath } from '../../../hooks/useEffectiveWorkspaceId';
 
 function mapReportToHistoryItem(report: ReportingResponse): HistoryItem {
   const date = report.generationDate ? new Date(report.generationDate) : new Date();
@@ -43,7 +44,7 @@ export function HistoryPage({
 }: {
   workspaceId?: string;
 }) {
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ActivityCategory | 'all'>('all');
   const [timeFilter, setTimeFilter] = useState('all-time');
@@ -165,7 +166,7 @@ export function HistoryPage({
               variant={searchQuery ? 'no-results' : categoryFilter !== 'all' ? 'no-category' : 'no-history'}
               searchQuery={searchQuery}
               onClearSearch={() => setSearchQuery('')}
-              onStartAction={() => {}}
+              onStartAction={() => workspaceId && navigate(aiPath('/app/ai/reports', workspaceId))}
             />
           ) : (
             <div className="flex flex-col gap-4">
@@ -194,7 +195,11 @@ export function HistoryPage({
           isFavorite={favorites.has(selectedItem.id)}
           onClose={() => setSelectedItem(null)}
           onToggleFavorite={() => handleToggleFavorite(selectedItem.id)}
-          onReopen={() => {}}
+          onReopen={() => {
+            if (workspaceId && selectedItem) {
+              navigate(aiPath(`/app/ai/report/${selectedItem.id}`, workspaceId));
+            }
+          }}
           onCopy={() => {}}
           onDelete={() => {}}
         />

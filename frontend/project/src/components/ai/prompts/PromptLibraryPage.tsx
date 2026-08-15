@@ -11,8 +11,32 @@ import { PromptEmptyState } from './PromptEmptyState';
 import { PromptLoading } from './PromptLoading';
 import { PromptErrorCard } from './PromptErrorCard';
 import type { Prompt, PromptCategoryId } from './PromptTypes';
+import { useAIPrompts } from '../../../services/prompt-ai-hooks';
+import type { AIPromptResponse } from '../../../services/prompt-ai-service';
 
-const emptyPrompts: Prompt[] = [];
+const categoryMap: Record<AIPromptResponse['category'], PromptCategoryId> = {
+  ANALYTICS: 'analytics',
+  HANDOVER: 'handover',
+  KNOWLEDGE: 'knowledge',
+  GENERAL: 'workspace',
+};
+
+function mapPrompt(p: AIPromptResponse): Prompt {
+  return {
+    id: p.id,
+    title: p.name,
+    description: p.description ?? '',
+    category: categoryMap[p.category] ?? 'workspace',
+    tags: [p.code],
+    businessObjective: p.description ?? p.name,
+    useCases: [],
+    requiredContext: [],
+    expectedOutput: 'AI-generated output based on workspace context',
+    executionTime: '',
+    favorite: false,
+    featured: p.active,
+  };
+}
 
 export function PromptLibraryPage() {
   const [activeCategory, setActiveCategory] = useState<PromptCategoryId | 'all'>('all');
@@ -20,11 +44,10 @@ export function PromptLibraryPage() {
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [runPrompt, setRunPrompt] = useState<Prompt | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [searches, setSearches] = useState<string[]>([]);
 
-  const prompts = emptyPrompts;
+  const { data: apiPrompts, isLoading, isError, refetch } = useAIPrompts();
+  const prompts = useMemo(() => (apiPrompts ?? []).map(mapPrompt), [apiPrompts]);
 
   const filtered = useMemo(() => {
     let items = [...prompts];
@@ -43,11 +66,10 @@ export function PromptLibraryPage() {
       );
     }
     return items;
-  }, [activeCategory, searchQuery, favorites]);
+  }, [activeCategory, searchQuery, favorites, prompts]);
 
-  const featured = useMemo(() => prompts.filter((p) => p.featured), []);
-  const recent = useMemo<Prompt[]>(() => [], []);
-  const favoritePrompts = useMemo(() => prompts.filter((p) => favorites.has(p.id)), [favorites]);
+  const featured = useMemo(() => prompts.filter((p) => p.featured), [prompts]);
+  const favoritePrompts = useMemo(() => prompts.filter((p) => favorites.has(p.id)), [prompts, favorites]);
 
   function handleToggleFavorite(id: string) {
     setFavorites((prev) => {
@@ -70,20 +92,19 @@ export function PromptLibraryPage() {
     setSearchQuery('');
   };
 
-  if (loading) return <PromptLoading />;
+  if (isLoading) return <PromptLoading />;
 
-  if (error) {
+  if (isError) {
     return (
       <div className="flex flex-col gap-6">
         <PromptHeader searches={searches} onSearch={() => {}} />
-        <PromptErrorCard message={error} onRetry={() => setError(null)} onDismiss={() => setError(null)} />
+        <PromptErrorCard message="Unable to load prompt templates." onRetry={() => refetch()} onDismiss={() => refetch()} />
       </div>
     );
   }
 
+  const showFeatured = activeCategory === 'all' && !searchQuery && featured.length > 0;
   const showFavorites = activeCategory === 'all' && !searchQuery && favoritePrompts.length > 0;
-  const showRecent = activeCategory === 'all' && !searchQuery && recent.length > 0;
-  const showFeatured = activeCategory === 'all' && !searchQuery;
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
@@ -93,7 +114,7 @@ export function PromptLibraryPage() {
         query={searchQuery}
         onQueryChange={handleSearch}
         recentSearches={searches}
-        popularPrompts={prompts.filter((p) => p.featured).map((p) => p.title)}
+        popularPrompts={featured.map((p) => p.title)}
         onClearSearch={() => setSearchQuery('')}
       />
 
@@ -101,39 +122,6 @@ export function PromptLibraryPage() {
 
       {showFeatured && (
         <PromptFeatured prompts={featured} onPreview={setSelectedPrompt} onRun={setRunPrompt} onToggleFavorite={handleToggleFavorite} favorites={favorites} />
-      )}
-
-      {showRecent && (
-        <section className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-text-tertiary" />
-            <h2 className="text-section font-semibold text-text-primary">Recently Used</h2>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
-            {recent.map((prompt) => (
-              <div key={prompt.id} className="shrink-0 w-64 rounded-xl border border-border-subtle bg-surface p-4 hover:shadow-cx-sm hover:-translate-y-0.5 transition-all duration-150">
-                <p className="text-caption font-medium text-text-primary truncate">{prompt.title}</p>
-                <p className="text-2xs text-text-tertiary mt-1">{prompt.lastUsed}</p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRunPrompt(prompt)}
-                    className="flex-1 rounded-lg bg-accent-600 px-3 py-1.5 text-2xs font-medium text-white hover:bg-accent-700 transition-colors"
-                  >
-                    Run
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPrompt(prompt)}
-                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-2xs font-medium text-text-secondary hover:bg-surface-2 transition-colors"
-                  >
-                    Preview
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       )}
 
       {showFavorites && (
@@ -154,7 +142,7 @@ export function PromptLibraryPage() {
 
       {(activeCategory !== 'all' || searchQuery) && filtered.length === 0 ? (
         <PromptEmptyState
-          variant={searchQuery ? 'no-results' : 'no-category'}
+          variant={searchQuery ? 'no-results' : prompts.length === 0 ? 'no-category' : 'no-category'}
           searchQuery={searchQuery}
           category={activeCategory !== 'all' ? activeCategory : undefined}
           onClearSearch={() => setSearchQuery('')}
@@ -170,9 +158,9 @@ export function PromptLibraryPage() {
               <span className="text-caption text-text-tertiary">{filtered.length}</span>
             </div>
           )}
-          {!showFavorites && !showRecent && !showFeatured && (
+          {(activeCategory !== 'all' || searchQuery || prompts.length > 0) && (
             <PromptGrid
-              prompts={filtered}
+              prompts={filtered.length > 0 ? filtered : prompts}
               onPreview={setSelectedPrompt}
               onRun={setRunPrompt}
               onToggleFavorite={handleToggleFavorite}
@@ -196,7 +184,7 @@ export function PromptLibraryPage() {
         <PromptRunModal
           prompt={runPrompt}
           onClose={() => setRunPrompt(null)}
-          onRun={() => {}}
+          onRun={() => setRunPrompt(null)}
         />
       )}
     </div>

@@ -31,10 +31,10 @@ public interface EmployeeSkillRepository extends JpaRepository<EmployeeSkill, UU
 
     long countByEmployee_IdAndCertificationNameIsNotNull(UUID employeeId);
 
-    @Query("SELECT COUNT(DISTINCT s.employee.id) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId")
+    @Query("SELECT COUNT(DISTINCT s.employee.id) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true")
     long countDistinctEmployeeByDepartmentId(@Param("departmentId") UUID departmentId);
 
-    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId")
+    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true")
     long countByDepartmentId(@Param("departmentId") UUID departmentId);
 
     @Query("SELECT s.category, COUNT(s) FROM EmployeeSkill s WHERE s.employee.id = :employeeId AND s.active = true GROUP BY s.category")
@@ -52,18 +52,18 @@ public interface EmployeeSkillRepository extends JpaRepository<EmployeeSkill, UU
     @Query("SELECT s.skillName, s.category, s.proficiencyLevel, COUNT(s) as cnt FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true GROUP BY s.skillName, s.category, s.proficiencyLevel ORDER BY cnt DESC")
     List<Object[]> findTopSkillsByDepartmentId(@Param("departmentId") UUID departmentId);
 
-    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.certificationExpiration IS NOT NULL AND s.certificationExpiration > :date AND s.certificationExpiration <= :cutoff")
+    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true AND s.certificationExpiration IS NOT NULL AND s.certificationExpiration > :date AND s.certificationExpiration <= :cutoff")
     long countExpiringCertificationsByDepartmentId(@Param("departmentId") UUID departmentId, @Param("date") LocalDate date, @Param("cutoff") LocalDate cutoff);
 
     @Query("SELECT s FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true AND s.certificationExpiration IS NOT NULL AND s.certificationExpiration > :date AND s.certificationExpiration <= :cutoff")
     List<EmployeeSkill> findExpiringCertificationsByDepartmentId(@Param("departmentId") UUID departmentId, @Param("date") LocalDate date, @Param("cutoff") LocalDate cutoff);
 
-    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.certificationName IS NOT NULL")
+    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true AND s.certificationName IS NOT NULL")
     long countCertificationsByDepartmentId(@Param("departmentId") UUID departmentId);
 
-    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.verified = true")
+    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true AND s.verified = true")
     long countVerifiedByDepartmentId(@Param("departmentId") UUID departmentId);
 
-    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.verified = false")
+    @Query("SELECT COUNT(s) FROM EmployeeSkill s WHERE s.employee.department.id = :departmentId AND s.active = true AND s.verified = false")
     long countUnverifiedByDepartmentId(@Param("departmentId") UUID departmentId);
 }

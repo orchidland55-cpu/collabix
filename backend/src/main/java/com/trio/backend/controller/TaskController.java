@@ -30,7 +30,7 @@ public class TaskController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_CREATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentTasks(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_CREATE')")
     @Operation(summary = "Create a task", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<TaskResponse> create(
             @PathVariable UUID workspaceId,
@@ -42,7 +42,7 @@ public class TaskController {
     }
 
     @GetMapping("/{taskId}")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
     @Operation(summary = "Get a task", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<TaskResponse> getById(
             @PathVariable UUID workspaceId,
@@ -54,7 +54,7 @@ public class TaskController {
     }
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
     @Operation(summary = "List tasks with search and filters", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<Page<TaskResponse>> list(
             @PathVariable UUID workspaceId,
@@ -71,7 +71,7 @@ public class TaskController {
     }
 
     @GetMapping("/archived")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_READ')")
     @Operation(summary = "List archived tasks", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<List<TaskResponse>> listArchived(
             @PathVariable UUID workspaceId,
@@ -82,7 +82,7 @@ public class TaskController {
     }
 
     @PutMapping("/{taskId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_UPDATE')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && (@permissionEvaluator.hasPermission(authentication, 'TASK_UPDATE') || @permissionEvaluator.hasPermission(authentication, 'TASK_READ'))")
     @Operation(summary = "Update a task", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<TaskResponse> update(
             @PathVariable UUID workspaceId,
@@ -95,7 +95,7 @@ public class TaskController {
     }
 
     @PutMapping("/{taskId}/restore")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentTasks(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_UPDATE')")
     @Operation(summary = "Restore an archived task", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<TaskResponse> restore(
             @PathVariable UUID workspaceId,
@@ -108,7 +108,7 @@ public class TaskController {
 
     @DeleteMapping("/{taskId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_DELETE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentTasks(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'TASK_DELETE')")
     @Operation(summary = "Archive a task", security = @SecurityRequirement(name = "bearer"))
     public void delete(
             @PathVariable UUID workspaceId,

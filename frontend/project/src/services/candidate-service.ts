@@ -85,6 +85,7 @@ export interface InterviewResponse {
   type: string;
   status: string;
   title?: string;
+  position?: string;
   description?: string;
   scheduledDate?: string;
   startTime?: string;
@@ -97,6 +98,7 @@ export interface InterviewResponse {
 export interface CreateInterviewRequest {
   type: string;
   title?: string;
+  position?: string;
   description?: string;
   scheduledDate?: string;
   startTime?: string;

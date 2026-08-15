@@ -9,9 +9,8 @@ import com.trio.backend.dto.ai.AnalyticsAIResponse;
 import com.trio.backend.entity.AnalyticsReport;
 import com.trio.backend.entity.Project;
 import com.trio.backend.entity.Workspace;
-import com.trio.backend.entity.WorkspaceMember;
+import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.exception.BadRequestException;
-import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.entity.Department;
 import com.trio.backend.repository.AnalyticsReportRepository;
@@ -19,7 +18,9 @@ import com.trio.backend.repository.DepartmentRepository;
 import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
-import com.trio.backend.security.user.CustomUserDetails;
+import com.trio.backend.enums.AIScopeType;
+import com.trio.backend.security.ai.AIScopeAuthorization;
+import com.trio.backend.util.AIScopeUtils;
 import com.trio.backend.service.AnalyticsAIService;
 import com.trio.backend.service.AnalyticsDataCollector;
 import lombok.RequiredArgsConstructor;
@@ -47,16 +48,23 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     private final ProjectRepository projectRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
+    private final AIScopeAuthorization aiScopeAuthorization;
 
     @Override
     public AnalyticsAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId,
                                          LocalDate startDate, LocalDate endDate) {
+        return generate(workspaceId, departmentId, projectId, null, null, startDate, endDate);
+    }
+
+    @Override
+    public AnalyticsAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId, UUID teamId,
+                                         AIScopeType scope, LocalDate startDate, LocalDate endDate) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        AIScopeType effectiveScope = AIScopeUtils.resolveScope(scope, projectId, teamId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, effectiveScope, departmentId, projectId, teamId);
 
         Map<String, Object> collectedData = analyticsDataCollector.collect(
-                workspaceId, departmentId, projectId, startDate, endDate);
+                workspaceId, departmentId, projectId, teamId, effectiveScope, startDate, endDate);
 
         AIExecutionRequest executionRequest = new AIExecutionRequest();
         executionRequest.setTask(AITask.ANALYTICS_SUMMARY);
@@ -79,8 +87,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     @Override
     public AnalyticsAIResponse regenerate(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, AIScopeType.DEPARTMENT, departmentId, projectId, null);
 
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
@@ -93,8 +100,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     public AnalyticsAIResponse edit(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId,
                                      AnalyticsAIEditRequest request) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, AIScopeType.DEPARTMENT, departmentId, projectId, null);
 
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
@@ -113,8 +119,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     @Override
     public AnalyticsAIResponse approve(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, AIScopeType.DEPARTMENT, departmentId, projectId, null);
 
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
@@ -127,8 +132,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     @Override
     public AnalyticsAIResponse reject(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        aiScopeAuthorization.assertCanGenerate(workspaceId, AIScopeType.DEPARTMENT, departmentId, projectId, null);
 
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
@@ -143,8 +147,10 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
                                             AIExecutionResponse aiResponse, long executionTime) {
         Workspace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
-        Department department = departmentRepository.findById(departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+        Department department = departmentId != null
+                ? departmentRepository.findById(departmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Department not found"))
+                : null;
 
         Project project = projectId != null
                 ? projectRepository.findByIdAndDepartment_Id(projectId, departmentId).orElse(null)
@@ -205,25 +211,5 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
             throw new BadRequestException("User is not authenticated.");
         }
         return user.getId();
-    }
-
-    private void assertActiveWorkspaceMember(UUID workspaceId, UUID userId) {
-        WorkspaceMember wm = workspaceMemberRepository
-                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, userId)
-                .orElseThrow(() -> new ForbiddenException("You are not a member of this workspace."));
-        if (wm.getStatus() != com.trio.backend.enums.WorkspaceMemberStatus.ACTIVE) {
-            throw new ForbiddenException("You are not an active member of this workspace.");
-        }
-    }
-
-    private void assertWorkspaceAdminOrOwner(UUID workspaceId, UUID userId) {
-        boolean isAdmin = workspaceMemberRepository.existsWithRole(
-                workspaceId, userId, com.trio.backend.enums.WorkspaceRole.ADMIN);
-        boolean isOwner = workspaceRepository.findById(workspaceId)
-                .map(ws -> ws.getOwner().getId().equals(userId))
-                .orElse(false);
-        if (!isAdmin && !isOwner) {
-            throw new ForbiddenException("You do not have permission for this operation.");
-        }
     }
 }

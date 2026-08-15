@@ -21,6 +21,7 @@ import com.trio.backend.repository.TaskRepository;
 import com.trio.backend.repository.UserRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
+import com.trio.backend.security.department.DepartmentScopeGuard;
 import com.trio.backend.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final ActivityMapper activityMapper;
+    private final DepartmentScopeGuard departmentScopeGuard;
 
     @Override
     public ActivityResponse create(UUID workspaceId,
@@ -55,6 +57,7 @@ public class ActivityServiceImpl implements ActivityService {
 
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found."));
@@ -88,7 +91,9 @@ public class ActivityServiceImpl implements ActivityService {
                                     UUID taskId,
                                     UUID activityId) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Activity activity = activityRepository.findById(activityId)
                 .orElseThrow(() -> new ResourceNotFoundException("Activity not found."));
@@ -124,7 +129,9 @@ public class ActivityServiceImpl implements ActivityService {
                                        UUID taskId,
                                        Pageable pageable) {
 
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         // Validation en depth de l'arborescence parente
         Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)

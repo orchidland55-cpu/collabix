@@ -31,9 +31,7 @@ export const documentService = {
     if (description) formData.append('description', description);
     if (category) formData.append('category', category);
     if (tags) formData.append('tags', tags);
-    return apiClient.post<DocumentResponse>(`${base(wsId, deptId, projId)}/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return apiClient.post<DocumentResponse>(`${base(wsId, deptId, projId)}/upload`, formData);
   },
 
   update: (wsId: string, deptId: string, projId: string, docId: string, data: UpdateDocumentRequest) =>

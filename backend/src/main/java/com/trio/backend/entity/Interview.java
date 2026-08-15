@@ -49,6 +49,10 @@ public class Interview extends AuditableEntity {
     @Column(name = "title", length = 255)
     private String title;
 
+    @Size(max = 150)
+    @Column(name = "position", length = 150)
+    private String position;
+
     @Size(max = 5000)
     @Column(name = "description", length = 5000)
     private String description;
@@ -69,6 +73,10 @@ public class Interview extends AuditableEntity {
     @Size(max = 500)
     @Column(name = "meeting_link", length = 500)
     private String meetingLink;
+
+    @Size(max = 10000)
+    @Column(name = "notes", length = 10000)
+    private String notes;
 
     @Column(name = "archived", nullable = false)
     private boolean archived;

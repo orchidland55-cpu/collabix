@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import { onAuthEvent, type AuthEvent } from './auth-events';
 import { authService } from '../services/auth-service';
+import { queryClient } from './query-client';
 import type { UserResponse } from '../types';
 
 /* ---------- JWT Decode (minimal, no library needed) ---------- */
@@ -148,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthEvent((event) => {
       setLastAuthEvent(event);
       if (event.type === 'session-expired') {
+        queryClient.clear();
         clearAuth();
         setState({ user: null, accessToken: null, refreshToken: null });
         setSessionExpired(true);
@@ -171,6 +173,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (payload: LoginPayload): Promise<LoginResult> => {
       setIsRefreshing(true);
       try {
+        // A different user is signing in — drop any cached data belonging to
+        // the previous session so nothing leaks across accounts.
+        queryClient.clear();
+
         const loginRes = await authService.login({
           email: payload.email,
           password: payload.password,
@@ -199,6 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const currentRefreshToken = state.refreshToken;
+    // Flush all cached data for the current user.
+    queryClient.clear();
     try {
       if (currentRefreshToken) {
         await authService.logout({ refreshToken: currentRefreshToken });

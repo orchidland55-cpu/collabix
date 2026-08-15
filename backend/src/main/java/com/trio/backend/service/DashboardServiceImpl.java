@@ -10,9 +10,11 @@ import com.trio.backend.dto.organisation.comment.CommentResponse;
 import com.trio.backend.entity.*;
 import com.trio.backend.enums.ActivityStatus;
 import com.trio.backend.enums.CommentStatus;
+import com.trio.backend.enums.RoleName;
 import com.trio.backend.enums.TaskStatus;
 import com.trio.backend.enums.UserStatus;
 import com.trio.backend.enums.WorkspaceMemberStatus;
+import com.trio.backend.enums.WorkspaceRole;
 import com.trio.backend.enums.WorkspaceStatus;
 import com.trio.backend.mapper.CommentMapper;
 import com.trio.backend.dto.Dashboard.scope.widget.DepartmentAIModelWidget;
@@ -76,6 +78,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final MentionRepository mentionRepository;
     private final AttachmentRepository attachmentRepository;
     private final AIModelRepository aiModelRepository;
+    private final UserRepository userRepository;
     private final CommentMapper commentMapper;
 
     @Value("${app.dashboard.recent-limit:10}")
@@ -111,9 +114,13 @@ public class DashboardServiceImpl implements DashboardService {
     public PersonalDashboardResponse getPersonalDashboard(UUID workspaceId, UUID authenticatedUserId) {
         PersonalDashboardResponse response = new PersonalDashboardResponse();
 
+        // A department manager sees only their primary department's data.
+        // Admins, super-admins and other roles keep the workspace-wide scope.
+        UUID departmentScope = resolvePersonalDepartmentScope(workspaceId, authenticatedUserId);
+
         // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Personal Widgets (user-specific, honest) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-        response.setMyTasks(buildPersonalTasks(workspaceId, authenticatedUserId));
-        response.setOverdueTasks(buildPersonalOverdueTasks(workspaceId, authenticatedUserId));
+        response.setMyTasks(buildPersonalTasks(workspaceId, authenticatedUserId, departmentScope));
+        response.setOverdueTasks(buildPersonalOverdueTasks(workspaceId, authenticatedUserId, departmentScope));
         response.setUnreadNotifications(buildUnreadNotifications(authenticatedUserId));
         response.setUnreadMentions(buildUnreadMentions(workspaceId, authenticatedUserId));
         response.setRecentComments(buildRecentComments(workspaceId, authenticatedUserId));
@@ -121,12 +128,54 @@ public class DashboardServiceImpl implements DashboardService {
         response.setRecentActivities(buildPersonalRecentActivities(workspaceId, authenticatedUserId));
 
         // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Workspace Feed (honest label) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-        response.setRecentWorkspaceProjects(buildRecentWorkspaceProjects(workspaceId));
-        response.setRecentDocuments(buildRecentDocuments(workspaceId));
+        response.setRecentWorkspaceProjects(buildRecentWorkspaceProjects(workspaceId, departmentScope));
+        response.setRecentDocuments(buildRecentDocuments(workspaceId, departmentScope));
         response.setKnowledgeArticles(buildKnowledgeArticles(workspaceId));
-        response.setWorkspaceActivities(buildWorkspaceActivities(workspaceId));
+        response.setWorkspaceActivities(buildWorkspaceActivities(workspaceId, departmentScope));
 
         return response;
+    }
+
+    /**
+     * Determines the department scope for the personal dashboard.
+     *
+     * <p>A department manager (global {@code ROLE_MANAGER}) with a primary
+     * department sees only that department's data. Super-admins and workspace
+     * OWNER/ADMIN keep workspace-wide visibility; users without a primary
+     * department fall back to workspace-wide.</p>
+     *
+     * @return the department ID to scope to, or {@code null} for workspace-wide
+     */
+    private UUID resolvePersonalDepartmentScope(UUID workspaceId, UUID userId) {
+        User user = userRepository.findByIdWithRolesAndPrimaryDepartment(userId).orElse(null);
+        if (user == null) {
+            return null;
+        }
+
+        if (user.getPrimaryDepartment() == null) {
+            return null;
+        }
+
+        if (user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole().getName() == RoleName.SUPER_ADMIN)) {
+            return null;
+        }
+
+        WorkspaceMember member = workspaceMemberRepository
+                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, userId)
+                .orElse(null);
+        if (member != null
+                && (member.getRole() == WorkspaceRole.OWNER || member.getRole() == WorkspaceRole.ADMIN)) {
+            return null;
+        }
+
+        boolean isManager = user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole().getName() == RoleName.MANAGER);
+        if (!isManager) {
+            return null;
+        }
+
+        return user.getPrimaryDepartment().getId();
     }
 
 // =========================================================================
@@ -344,10 +393,12 @@ private TaskSummaryWidget buildTaskSummary(UUID workspaceId) {
      * les tÃƒÆ’Ã‚Â¢ches "personnelles". Cela correspondss aux tÃƒÆ’Ã‚Â¢ches que the user
      * a crÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©es, et non aux tÃƒÆ’Ã‚Â¢ches qui lui sont assignÃƒÆ’Ã‚Â©es.</p>
      */
-    private List<PersonalTaskWidget> buildPersonalTasks(UUID workspaceId, UUID userId) {
+    private List<PersonalTaskWidget> buildPersonalTasks(UUID workspaceId, UUID userId, UUID departmentId) {
         PageRequest top = PageRequest.of(0, recentLimit);
-        return taskRepository.findLatestByCreatedByAndWorkspaceId(userId, workspaceId, top)
-                .stream()
+        List<Task> tasks = departmentId != null
+                ? taskRepository.findLatestManagerTasks(workspaceId, departmentId, userId, top)
+                : taskRepository.findLatestByCreatedByAndWorkspaceId(userId, workspaceId, top);
+        return tasks.stream()
                 .map(t -> {
                     PersonalTaskWidget w = new PersonalTaskWidget();
                     w.setId(t.getId());
@@ -364,9 +415,11 @@ private TaskSummaryWidget buildTaskSummary(UUID workspaceId) {
     /**
      * Returns the namebre de tÃƒÆ’Ã‚Â¢ches en delay crÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©es by the user.
      */
-    private long buildPersonalOverdueTasks(UUID workspaceId, UUID userId) {
+    private long buildPersonalOverdueTasks(UUID workspaceId, UUID userId, UUID departmentId) {
         Instant now = Instant.now();
-        return taskRepository.countOverdueByCreatedByAndWorkspaceId(userId, workspaceId, now);
+        return departmentId != null
+                ? taskRepository.countOverdueManagerTasks(workspaceId, departmentId, userId, now)
+                : taskRepository.countOverdueByCreatedByAndWorkspaceId(userId, workspaceId, now);
     }
 
     /**
@@ -460,11 +513,13 @@ private List<MentionWidget> buildUnreadMentions(UUID workspaceId, UUID userId) {
     // =========================================================================
 
     /**
-     * Projects rÃƒÆ’Ã‚Â©cents of the workspace (feed).
+     * Projects rÃƒÆ’Ã‚Â©cents of the workspace (feed), scoped to the department for managers.
      */
-    private List<PersonalProjectWidget> buildRecentWorkspaceProjects(UUID workspaceId) {
+    private List<PersonalProjectWidget> buildRecentWorkspaceProjects(UUID workspaceId, UUID departmentId) {
         PageRequest top = PageRequest.of(0, recentLimit);
-        List<Project> projects = projectRepository.findAllByWorkspaceIdAndStatus(workspaceId, WorkspaceStatus.ACTIVE, top).getContent();
+        List<Project> projects = departmentId != null
+                ? projectRepository.findAllByDepartment_IdAndStatus(departmentId, WorkspaceStatus.ACTIVE, top).getContent()
+                : projectRepository.findAllByWorkspaceIdAndStatus(workspaceId, WorkspaceStatus.ACTIVE, top).getContent();
         return projects.stream()
                 .map(p -> {
                     PersonalProjectWidget w = new PersonalProjectWidget();
@@ -477,12 +532,14 @@ private List<MentionWidget> buildUnreadMentions(UUID workspaceId, UUID userId) {
     }
 
     /**
-     * Documents rÃƒÆ’Ã‚Â©cents of the workspace (feed).
+     * Documents rÃƒÆ’Ã‚Â©cents of the workspace (feed), scoped to the department for managers.
      */
-    private List<PersonalDocumentWidget> buildRecentDocuments(UUID workspaceId) {
+    private List<PersonalDocumentWidget> buildRecentDocuments(UUID workspaceId, UUID departmentId) {
         PageRequest top = PageRequest.of(0, recentLimit);
-        return documentRepository.findByWorkspacePaginated(workspaceId, top)
-                .stream()
+        List<Document> documents = departmentId != null
+                ? documentRepository.findRecentByDepartmentIdPaginated(departmentId, top).getContent()
+                : documentRepository.findByWorkspacePaginated(workspaceId, top).getContent();
+        return documents.stream()
                 .map(d -> {
                     PersonalDocumentWidget w = new PersonalDocumentWidget();
                     w.setId(d.getId());
@@ -515,9 +572,18 @@ private List<MentionWidget> buildUnreadMentions(UUID workspaceId, UUID userId) {
     }
 
     /**
-     * ActivitÃƒÆ’Ã‚Â©s rÃƒÆ’Ã‚Â©centes of the workspace (feed) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all users.
+     * ActivitÃƒÆ’Ã‚Â©s rÃƒÆ’Ã‚Â©centes of the workspace (feed) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all users,
+     * scoped to the department for managers.
      */
-    private List<RecentActivityWidget> buildWorkspaceActivities(UUID workspaceId) {
+    private List<RecentActivityWidget> buildWorkspaceActivities(UUID workspaceId, UUID departmentId) {
+        PageRequest top = PageRequest.of(0, recentLimit);
+        if (departmentId != null) {
+            return activityRepository.findAllByDepartmentIdAndWorkspaceIdAndStatus(
+                            departmentId, workspaceId, ActivityStatus.ACTIVE, top)
+                    .stream()
+                    .map(this::toRecentActivityWidget)
+                    .collect(Collectors.toList());
+        }
         return buildRecentActivities(workspaceId);
     }
 

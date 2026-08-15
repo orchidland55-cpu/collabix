@@ -11,6 +11,7 @@ import com.trio.backend.security.jwt.JwtProperties;
 import com.trio.backend.security.jwt.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -179,8 +180,17 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
      *     <li>Met Ã  jour lastUsedAt sur l'ancien token revoked.</li>
      * </ol>
      */
-@Override
+    @Override
     public RefreshTokenResponse refreshAccessToken(String refreshToken) {
+        try {
+            return doRefreshAccessToken(refreshToken);
+        } catch (OptimisticLockingFailureException ex) {
+            log.warn("Refresh token rotation conflict (concurrent use of the same token): {}", ex.getMessage());
+            throw new BadRequestException("Refresh token has been used already. Please sign in again.");
+        }
+    }
+
+    private RefreshTokenResponse doRefreshAccessToken(String refreshToken) {
 
         RefreshToken oldToken = refreshTokenRepository.findByTokenWithLock(refreshToken)
                 .orElseThrow(() -> new BadRequestException("Invalid refresh token."));
@@ -217,8 +227,6 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
         // Step 4 â€” Generate a new access token
         String newAccessToken = jwtService.generateAccessToken(user);
-
-        // Step 5 â€” Generate a new refresh token and persist it
         String newRefreshTokenValue = jwtService.generateRefreshToken(user);
 
         RefreshToken newToken = RefreshToken.builder()
@@ -250,7 +258,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Override
     public void revokeRefreshToken(String token) {
 
-        Optional<RefreshToken> optionalToken = refreshTokenRepository.findByToken(token);
+        Optional<RefreshToken> optionalToken = refreshTokenRepository.findByTokenWithLock(token);
 
         if (optionalToken.isEmpty()) {
             log.warn("Attempted to revoke a non-existent refresh token.");

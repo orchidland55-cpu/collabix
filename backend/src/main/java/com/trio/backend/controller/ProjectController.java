@@ -34,7 +34,7 @@ public class ProjectController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_CREATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentProjects(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_CREATE')")
     @Operation(summary = "Create a project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Project created", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -53,7 +53,7 @@ public class ProjectController {
     }
 
     @GetMapping("/{projectId}")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
     @Operation(summary = "Get a project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Project found", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -70,7 +70,7 @@ public class ProjectController {
     }
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
     @Operation(summary = "List projects", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "List retrieved", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -87,7 +87,7 @@ public class ProjectController {
     }
 
     @GetMapping("/archived")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_READ')")
     @Operation(summary = "List archived projects", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Archived projects retrieved", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -102,7 +102,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{projectId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentProjects(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_UPDATE')")
     @Operation(summary = "Update a project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Project updated", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -122,7 +122,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{projectId}/restore")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentProjects(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_UPDATE')")
     @Operation(summary = "Restore an archived project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Project restored", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
@@ -140,7 +140,7 @@ public class ProjectController {
 
     @DeleteMapping("/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_DELETE')")
     @Operation(summary = "Delete (archive) a project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Project archived"),

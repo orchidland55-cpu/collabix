@@ -5,6 +5,8 @@ import com.trio.backend.dto.organisation.task.TaskResponse;
 import com.trio.backend.dto.organisation.task.UpdateTaskRequest;
 import com.trio.backend.entity.*;
 import com.trio.backend.enums.ActivityStatus;
+import com.trio.backend.enums.RoleName;
+import com.trio.backend.enums.TaskPriority;
 import com.trio.backend.enums.TaskStatus;
 import com.trio.backend.enums.WorkspaceMemberStatus;
 import com.trio.backend.enums.WorkspaceRole;
@@ -15,6 +17,7 @@ import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.mapper.TaskMapper;
 import com.trio.backend.repository.*;
+import com.trio.backend.security.department.DepartmentScopeGuard;
 import com.trio.backend.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +28,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -34,6 +39,15 @@ import java.util.UUID;
 @Transactional
 @Slf4j
 public class TaskServiceImpl implements TaskService {
+
+    private static final Set<TaskStatus> KANBAN_WORKFLOW_STATUSES = EnumSet.of(
+            TaskStatus.ACTIVE,
+            TaskStatus.TODO,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.BLOCKED,
+            TaskStatus.COMPLETED
+    );
 
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
@@ -45,11 +59,14 @@ public class TaskServiceImpl implements TaskService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final TaskMapper taskMapper;
+    private final DepartmentScopeGuard departmentScopeGuard;
 
     @Override
     public TaskResponse create(UUID workspaceId, UUID departmentId, UUID projectId, CreateTaskRequest request) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertCanManageTasks(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Project project = findActiveProject(workspaceId, departmentId, projectId);
 
@@ -73,9 +90,7 @@ public class TaskServiceImpl implements TaskService {
         }
 
         if (request.getAssigneeId() != null) {
-            User assignee = userRepository.findById(request.getAssigneeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-            task.setAssignee(assignee);
+            task.setAssignee(resolveValidatedAssignee(workspaceId, departmentId, request.getAssigneeId()));
         }
 
         resolveOptionalRelations(task, request, departmentId);
@@ -88,8 +103,11 @@ public class TaskServiceImpl implements TaskService {
     @Override
     @Transactional(readOnly = true)
     public TaskResponse getById(UUID workspaceId, UUID departmentId, UUID projectId, UUID taskId) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
         Task task = findActiveTask(taskId, projectId, departmentId, workspaceId);
+        assertTaskVisibleToUser(task, workspaceId, userId);
         return taskMapper.toResponse(task);
     }
 
@@ -98,18 +116,41 @@ public class TaskServiceImpl implements TaskService {
     public Page<TaskResponse> list(UUID workspaceId, UUID departmentId, UUID projectId,
                                     String search, String statusFilter, String priorityFilter,
                                     UUID assigneeFilter, Pageable pageable) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
         findActiveProject(workspaceId, departmentId, projectId);
 
-        return taskRepository.findFiltered(projectId, search, statusFilter, priorityFilter, assigneeFilter, pageable)
+        UUID effectiveAssigneeFilter = resolveAssigneeFilter(workspaceId, userId, assigneeFilter);
+        List<TaskStatus> statusFilters = resolveStatusFilters(statusFilter);
+        boolean statusFilterDisabled = statusFilters == null;
+        TaskPriority priority = resolvePriorityFilter(priorityFilter);
+
+        return taskRepository.findFiltered(
+                        projectId,
+                        search,
+                        statusFilterDisabled ? List.of() : statusFilters,
+                        statusFilterDisabled,
+                        priority,
+                        effectiveAssigneeFilter,
+                        pageable)
                 .map(taskMapper::toResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<TaskResponse> listArchived(UUID workspaceId, UUID departmentId, UUID projectId) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
         findActiveProject(workspaceId, departmentId, projectId);
+        if (isAssignedOnlyUser(workspaceId, userId)) {
+            return taskRepository.findAllByProject_IdAndStatus(projectId, TaskStatus.ARCHIVED)
+                    .stream()
+                    .filter(task -> task.getAssignee() != null && task.getAssignee().getId().equals(userId))
+                    .map(taskMapper::toResponse)
+                    .toList();
+        }
         return taskRepository.findAllByProject_IdAndStatus(projectId, TaskStatus.ARCHIVED)
                 .stream()
                 .map(taskMapper::toResponse)
@@ -120,6 +161,7 @@ public class TaskServiceImpl implements TaskService {
     public TaskResponse update(UUID workspaceId, UUID departmentId, UUID projectId, UUID taskId, UpdateTaskRequest request) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found."));
@@ -129,6 +171,48 @@ public class TaskServiceImpl implements TaskService {
         }
 
         validateTaskChain(workspaceId, departmentId, projectId, task);
+
+        if (isAssignedOnlyUser(workspaceId, userId)) {
+            return updateOwnAssignedTask(task, request, userId, workspaceId);
+        }
+
+        departmentScopeGuard.assertCanManageTasks(workspaceId, departmentId, userId);
+        return updateManagedTask(task, request, userId, workspaceId, departmentId, projectId);
+    }
+
+    private TaskResponse updateOwnAssignedTask(Task task, UpdateTaskRequest request, UUID userId, UUID workspaceId) {
+        assertTaskVisibleToUser(task, workspaceId, userId);
+        assertMemberSelfServiceUpdate(request);
+
+        StringBuilder changes = new StringBuilder();
+
+        if (request.getStatus() != null && request.getStatus() != task.getStatus()) {
+            applyAssigneeWorkflowStatusChange(task, request.getStatus(), userId);
+            changes.append("status, ");
+        }
+
+        if (request.getStoryPoints() != null) {
+            task.setStoryPoints(request.getStoryPoints());
+            changes.append("story points, ");
+        }
+
+        Task saved = taskRepository.save(task);
+
+        if (!changes.isEmpty()) {
+            String desc = "updated " + changes.substring(0, changes.length() - 2) + ".";
+            logActivity(saved, userId, desc);
+        }
+
+        return taskMapper.toResponse(saved);
+    }
+
+    private TaskResponse updateManagedTask(
+            Task task,
+            UpdateTaskRequest request,
+            UUID userId,
+            UUID workspaceId,
+            UUID departmentId,
+            UUID projectId) {
 
         StringBuilder changes = new StringBuilder();
 
@@ -158,14 +242,12 @@ public class TaskServiceImpl implements TaskService {
         }
 
         if (request.getAssigneeId() != null) {
-            User assignee = userRepository.findById(request.getAssigneeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-            task.setAssignee(assignee);
+            task.setAssignee(resolveValidatedAssignee(workspaceId, departmentId, request.getAssigneeId()));
             changes.append("assignee, ");
         }
 
-        if (request.getStatus() != null) {
-            task.setStatus(request.getStatus());
+        if (request.getStatus() != null && request.getStatus() != task.getStatus()) {
+            applyManagedWorkflowStatusChange(task, request.getStatus());
             changes.append("status, ");
         }
 
@@ -205,6 +287,8 @@ public class TaskServiceImpl implements TaskService {
     public void delete(UUID workspaceId, UUID departmentId, UUID projectId, UUID taskId) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertCanManageTasks(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found."));
@@ -224,6 +308,8 @@ public class TaskServiceImpl implements TaskService {
     public TaskResponse restore(UUID workspaceId, UUID departmentId, UUID projectId, UUID taskId) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertCanManageTasks(workspaceId, departmentId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found."));
@@ -323,6 +409,131 @@ public class TaskServiceImpl implements TaskService {
                 .orElseThrow(() -> new ForbiddenException("You are not a member of this workspace."));
         if (wm.getStatus() != WorkspaceMemberStatus.ACTIVE) {
             throw new ForbiddenException("You are not an active member of this workspace.");
+        }
+    }
+
+    /**
+     * Members (non-manager, non-admin) may only view tasks assigned to themselves.
+     */
+    private boolean isAssignedOnlyUser(UUID workspaceId, UUID userId) {
+        WorkspaceMember wm = workspaceMemberRepository
+                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, userId)
+                .orElseThrow(() -> new ForbiddenException("You are not a member of this workspace."));
+
+        if (wm.getRole() == WorkspaceRole.OWNER || wm.getRole() == WorkspaceRole.ADMIN) {
+            return false;
+        }
+
+        User user = userRepository.findByIdWithRolesAndPrimaryDepartment(userId)
+                .orElseThrow(() -> new ForbiddenException("User not found."));
+
+        return user.getUserRoles().stream()
+                .map(ur -> ur.getRole().getName())
+                .noneMatch(name -> name == RoleName.ADMIN
+                        || name == RoleName.SUPER_ADMIN
+                        || name == RoleName.MANAGER);
+    }
+
+    private UUID resolveAssigneeFilter(UUID workspaceId, UUID userId, UUID requestedAssignee) {
+        if (isAssignedOnlyUser(workspaceId, userId)) {
+            return userId;
+        }
+        return requestedAssignee;
+    }
+
+    private void assertTaskVisibleToUser(Task task, UUID workspaceId, UUID userId) {
+        if (!isAssignedOnlyUser(workspaceId, userId)) {
+            return;
+        }
+        if (task.getAssignee() == null || !task.getAssignee().getId().equals(userId)) {
+            throw new ForbiddenException("You do not have access to this task.");
+        }
+    }
+
+    private User resolveValidatedAssignee(UUID workspaceId, UUID departmentId, UUID assigneeId) {
+        User assignee = userRepository.findByIdWithRolesAndPrimaryDepartment(assigneeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Assignee not found."));
+
+        assertActiveWorkspaceMember(workspaceId, assigneeId);
+
+        if (assignee.getPrimaryDepartment() == null
+                || !assignee.getPrimaryDepartment().getId().equals(departmentId)) {
+            throw new ForbiddenException("Assignee must belong to the task department.");
+        }
+
+        return assignee;
+    }
+
+    private void assertMemberSelfServiceUpdate(UpdateTaskRequest request) {
+        if (request.getTitle() != null
+                || request.getDescription() != null
+                || request.getAssigneeId() != null
+                || request.getPriority() != null
+                || request.getDueAt() != null
+                || request.getStartDate() != null
+                || request.getSprintId() != null
+                || request.getSecurityAuditId() != null
+                || request.getMarketingCampaignId() != null) {
+            throw new ForbiddenException("You can only update status or progress on tasks assigned to you.");
+        }
+        if (request.getStatus() == null && request.getStoryPoints() == null) {
+            throw new BadRequestException("No updatable fields provided.");
+        }
+    }
+
+    private void applyAssigneeWorkflowStatusChange(Task task, TaskStatus newStatus, UUID userId) {
+        assertAssigneeForWorkflowStatusChange(task, userId);
+        validateStatusTransition(task.getStatus(), newStatus);
+        task.setStatus(newStatus);
+    }
+
+    private void applyManagedWorkflowStatusChange(Task task, TaskStatus newStatus) {
+        validateStatusTransition(task.getStatus(), newStatus);
+        task.setStatus(newStatus);
+    }
+
+    private List<TaskStatus> resolveStatusFilters(String statusFilter) {
+        if (statusFilter == null || statusFilter.isBlank()) {
+            return null;
+        }
+        TaskStatus status;
+        try {
+            status = TaskStatus.valueOf(statusFilter.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid status filter: " + statusFilter);
+        }
+        if (status == TaskStatus.ACTIVE || status == TaskStatus.TODO) {
+            return List.of(TaskStatus.ACTIVE, TaskStatus.TODO);
+        }
+        return List.of(status);
+    }
+
+    private TaskPriority resolvePriorityFilter(String priorityFilter) {
+        if (priorityFilter == null || priorityFilter.isBlank()) {
+            return null;
+        }
+        try {
+            return TaskPriority.valueOf(priorityFilter.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid priority filter: " + priorityFilter);
+        }
+    }
+
+    private void assertAssigneeForWorkflowStatusChange(Task task, UUID userId) {
+        if (task.getAssignee() == null || !task.getAssignee().getId().equals(userId)) {
+            throw new ForbiddenException("Only the assigned member can move this task through the workflow.");
+        }
+    }
+
+    private void validateStatusTransition(TaskStatus currentStatus, TaskStatus newStatus) {
+        if (!KANBAN_WORKFLOW_STATUSES.contains(newStatus)) {
+            throw new BadRequestException("Invalid task status for workflow update.");
+        }
+        if (currentStatus == TaskStatus.ARCHIVED || currentStatus == TaskStatus.CANCELLED) {
+            throw new BadRequestException("Cannot change status of an archived or cancelled task.");
+        }
+        if (!KANBAN_WORKFLOW_STATUSES.contains(currentStatus)) {
+            throw new BadRequestException("Invalid current task status for workflow update.");
         }
     }
 

@@ -1,7 +1,9 @@
-import { useSearchParams } from 'react-router-dom';
 import { AIHandoverPage } from '../../components/ai/business';
+import { useEffectiveWorkspaceId } from '../../hooks/useEffectiveWorkspaceId';
+import { useAIPermissions } from '../../hooks/useAIPermissions';
 
 export function HandoverAIPage() {
-  const [searchParams] = useSearchParams();
-  return <AIHandoverPage workspaceId={searchParams.get('ws') ?? ''} departmentId={searchParams.get('dept') ?? ''} projectId={searchParams.get('proj') ?? ''} />;
+  const workspaceId = useEffectiveWorkspaceId();
+  const { departmentId } = useAIPermissions();
+  return <AIHandoverPage workspaceId={workspaceId} departmentId={departmentId ?? ''} />;
 }

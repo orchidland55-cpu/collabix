@@ -6,6 +6,7 @@ import {
   archiveTeam,
   deleteTeamPermanently,
   restoreTeam,
+  removeTeamMember,
   listWorkspaceTeams,
   type TeamSummary,
   type CreateTeamRequest,
@@ -100,6 +101,18 @@ export function useAssignMemberToTeam(wsId: string | undefined) {
   return useMutation({
     mutationFn: ({ userId, teamId }: { userId: string; teamId: string }) =>
       userService(wsId!).update(userId, { teamId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace', 'users', wsId!] });
+      qc.invalidateQueries({ queryKey: teamKeys.workspaceTeams(wsId!) });
+    },
+  });
+}
+
+export function useRemoveMemberFromTeam(wsId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ departmentId, teamId, userId }: { departmentId: string; teamId: string; userId: string }) =>
+      removeTeamMember(wsId!, departmentId, teamId, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace', 'users', wsId!] });
       qc.invalidateQueries({ queryKey: teamKeys.workspaceTeams(wsId!) });

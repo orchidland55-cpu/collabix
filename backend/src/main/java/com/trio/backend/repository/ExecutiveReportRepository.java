@@ -37,6 +37,19 @@ public interface ExecutiveReportRepository extends JpaRepository<ExecutiveReport
     );
 
     @Query("""
+            SELECT er FROM ExecutiveReport er
+            WHERE er.workspace.id = :workspaceId
+              AND er.department.id = :departmentId
+              AND er.status = 'ACTIVE'
+            ORDER BY er.createdAt DESC
+            """)
+    Page<ExecutiveReport> findByWorkspaceAndDepartmentPaginated(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("departmentId") UUID departmentId,
+            Pageable pageable
+    );
+
+    @Query("""
             UPDATE ExecutiveReport er
             SET er.status = 'DELETED'
             WHERE er.id = :reportId

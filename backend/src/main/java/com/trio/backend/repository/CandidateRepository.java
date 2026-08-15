@@ -26,6 +26,10 @@ public interface CandidateRepository extends JpaRepository<Candidate, UUID>, Jpa
 
     boolean existsByDepartment_IdAndEmail(UUID departmentId, String email);
 
+    boolean existsByDepartment_IdAndEmailAndArchivedFalse(UUID departmentId, String email);
+
+    Optional<Candidate> findByDepartment_IdAndEmail(UUID departmentId, String email);
+
     long countByDepartment_Id(UUID departmentId);
 
     long countByDepartment_IdAndCurrentStatus(UUID departmentId, CandidateStatus currentStatus);

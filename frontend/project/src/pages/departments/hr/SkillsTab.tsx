@@ -13,7 +13,7 @@ import { useEmployeesList } from '../../../services/employee-hooks';
 import { useEmployeeSkillsList, useEmployeeSkillStats, useCreateEmployeeSkill, useUpdateEmployeeSkill, useDeleteEmployeeSkill, useVerifyEmployeeSkill, useUnverifyEmployeeSkill } from '../../../services/employee-skill-hooks';
 import type { CreateEmployeeSkillRequest } from '../../../services/employee-skill-service';
 import type { EmployeeSkillResponse } from '../../../services/employee-skill-service';
-import { SKILL_CATEGORIES, SKILL_LEVELS, skillCategoryLabel, skillLevelColor, formatEnum } from './hr-constants';
+import { SKILL_CATEGORIES, SKILL_LEVELS, skillCategoryLabel, skillLevelColor, formatEnum, isActiveEmployee } from './hr-constants';
 
 type SkillForm = CreateEmployeeSkillRequest;
 
@@ -38,6 +38,7 @@ export function SkillsTab({ wsId, deptId }: { wsId: string; deptId: string }) {
   const unverifySkill = useUnverifyEmployeeSkill(wsId, deptId, selectedEmp ?? '');
 
   const employees = empData?.content ?? [];
+  const activeEmployees = employees.filter((e) => isActiveEmployee(e.employmentStatus));
   const skills = skillData?.content ?? [];
 
   const filteredSkills = skills.filter((s) => {
@@ -184,7 +185,7 @@ export function SkillsTab({ wsId, deptId }: { wsId: string; deptId: string }) {
           containerClassName="max-w-xs"
           value={selectedEmp ?? ''}
           onChange={(e) => { setSelectedEmp(e.target.value || null); setShowForm(false); }}
-          options={[{ value: '', label: 'Select an employee...' }, ...employees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]}
+          options={[{ value: '', label: 'Select an employee...' }, ...activeEmployees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]}
         />
         {selectedEmp && (
           <Button leftIcon={<Plus />} size="sm" onClick={openCreate}>Add Skill</Button>

@@ -53,6 +53,15 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Let the browser set multipart boundary automatically for file uploads.
+  if (config.data instanceof FormData && config.headers) {
+    const headers = config.headers;
+    if (typeof headers.setContentType === 'function') {
+      headers.setContentType(undefined);
+    } else {
+      delete headers['Content-Type'];
+    }
+  }
   return config;
 });
 

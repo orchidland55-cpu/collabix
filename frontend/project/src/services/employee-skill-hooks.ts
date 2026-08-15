@@ -18,25 +18,56 @@ export function useEmployeeSkillStats(wsId: string, deptId: string) {
 
 export function useCreateEmployeeSkill(wsId: string, deptId: string, employeeId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: CreateEmployeeSkillRequest) => employeeSkillService.create(wsId, deptId, employeeId, data), onSuccess: () => qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) }) });
+  return useMutation({
+    mutationFn: (data: CreateEmployeeSkillRequest) => employeeSkillService.create(wsId, deptId, employeeId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) });
+    },
+  });
 }
 
 export function useUpdateEmployeeSkill(wsId: string, deptId: string, employeeId: string, skillId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: UpdateEmployeeSkillRequest) => employeeSkillService.update(wsId, deptId, employeeId, skillId, data), onSuccess: () => { qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) }); qc.invalidateQueries({ queryKey: keys.detail(wsId, deptId, employeeId, skillId) }); } });
+  return useMutation({
+    mutationFn: (data: UpdateEmployeeSkillRequest) => employeeSkillService.update(wsId, deptId, employeeId, skillId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.detail(wsId, deptId, employeeId, skillId) });
+      qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) });
+    },
+  });
 }
 
 export function useDeleteEmployeeSkill(wsId: string, deptId: string, employeeId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (skillId: string) => employeeSkillService.delete(wsId, deptId, employeeId, skillId), onSuccess: () => qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) }) });
+  return useMutation({
+    mutationFn: (skillId: string) => employeeSkillService.delete(wsId, deptId, employeeId, skillId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) });
+    },
+  });
 }
 
 export function useVerifyEmployeeSkill(wsId: string, deptId: string, employeeId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (skillId: string) => employeeSkillService.verify(wsId, deptId, employeeId, skillId), onSuccess: () => qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) }) });
+  return useMutation({
+    mutationFn: (skillId: string) => employeeSkillService.verify(wsId, deptId, employeeId, skillId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) });
+    },
+  });
 }
 
 export function useUnverifyEmployeeSkill(wsId: string, deptId: string, employeeId: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (skillId: string) => employeeSkillService.unverify(wsId, deptId, employeeId, skillId), onSuccess: () => qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) }) });
+  return useMutation({
+    mutationFn: (skillId: string) => employeeSkillService.unverify(wsId, deptId, employeeId, skillId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all(wsId, deptId, employeeId) });
+      qc.invalidateQueries({ queryKey: keys.stats(wsId, deptId) });
+    },
+  });
 }

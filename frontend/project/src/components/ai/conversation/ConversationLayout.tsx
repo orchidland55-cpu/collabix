@@ -1,42 +1,54 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu, Sparkles } from 'lucide-react';
 import { ConversationSidebar } from './ConversationSidebar';
 import { ConversationContextPanel } from './ConversationContextPanel';
 import { ConversationContextProvider, useConversationContext } from './ConversationContext';
+import { useConversationsList } from '../../../services/conversation-hooks';
+import { useEffectiveWorkspaceId, aiPath } from '../../../hooks/useEffectiveWorkspaceId';
 import type { Conversation } from './ConversationTypes';
+import type { ConversationResponse } from '../../../types/communication';
+
+function mapConversation(c: ConversationResponse): Conversation {
+  return {
+    id: c.id,
+    title: c.name,
+    preview: c.lastMessagePreview ?? 'No messages yet',
+    updatedAt: c.lastMessageAt
+      ? new Date(c.lastMessageAt).toLocaleString()
+      : new Date(c.updatedAt).toLocaleDateString(),
+    pinned: false,
+    favorite: false,
+    unread: (c.unreadCount ?? 0) > 0,
+  };
+}
 
 function ConversationLayoutInner() {
   const navigate = useNavigate();
+  const wsId = useEffectiveWorkspaceId();
   const { sidebarOpen, setSidebarOpen, contextPanelOpen, toggleContextPanel } = useConversationContext();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const { data: conversationsPage, isLoading } = useConversationsList(wsId);
+
+  const conversations = useMemo(
+    () => (conversationsPage?.content ?? []).map(mapConversation),
+    [conversationsPage],
+  );
 
   const handleNewConversation = useCallback(() => {
-    navigate('/app/ai/chat');
+    navigate(aiPath('/app/ai/conversations', wsId));
     setSidebarOpen(false);
-  }, [navigate, setSidebarOpen]);
-
-  const handleTogglePin = useCallback((id: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c)),
-    );
-  }, []);
-
-  const handleToggleFavorite = useCallback((id: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, favorite: !c.favorite } : c)),
-    );
-  }, []);
+  }, [navigate, wsId, setSidebarOpen]);
 
   return (
-    <div className="flex gap-0 xl:gap-5 h-full">
+    <div className="flex gap-0 xl:gap-5 h-full min-h-[480px]">
       <ConversationSidebar
         conversations={conversations}
         open={sidebarOpen}
+        loading={isLoading}
         onClose={() => setSidebarOpen(false)}
         onNewConversation={handleNewConversation}
-        onTogglePin={handleTogglePin}
-        onToggleFavorite={handleToggleFavorite}
+        onTogglePin={() => undefined}
+        onToggleFavorite={() => undefined}
       />
 
       <div className="flex flex-1 min-w-0 flex-col rounded-xl border border-border-subtle bg-elevated dark:bg-surface overflow-hidden h-full">
@@ -49,10 +61,10 @@ function ConversationLayoutInner() {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <Sparkles className="h-4 w-4 text-accent-600" />
+          <Sparkles className="h-4 w-4 text-accent-600 dark:text-accent-400" />
           <p className="text-caption font-medium text-text-primary">Conversations</p>
         </div>
-        <Outlet context={{ toggleContextPanel, contextPanelOpen }} />
+        <Outlet context={{ toggleContextPanel, contextPanelOpen, workspaceId: wsId }} />
       </div>
 
       <ConversationContextPanel open={contextPanelOpen} onClose={() => toggleContextPanel()} />

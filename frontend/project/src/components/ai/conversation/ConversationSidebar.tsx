@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { aiPath, useEffectiveWorkspaceId } from '../../../hooks/useEffectiveWorkspaceId';
 import {
   Search,
   Plus,
@@ -19,6 +20,7 @@ import { type Conversation } from './ConversationTypes';
 interface ConversationSidebarProps {
   conversations: Conversation[];
   open: boolean;
+  loading?: boolean;
   onClose: () => void;
   onNewConversation: () => void;
   onTogglePin: (id: string) => void;
@@ -28,12 +30,14 @@ interface ConversationSidebarProps {
 export function ConversationSidebar({
   conversations,
   open,
+  loading = false,
   onClose,
   onNewConversation,
   onTogglePin,
   onToggleFavorite,
 }: ConversationSidebarProps) {
   const navigate = useNavigate();
+  const workspaceId = useEffectiveWorkspaceId();
   const { conversationId } = useParams();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -57,7 +61,10 @@ export function ConversationSidebar({
   }
 
   function handleSelect(id: string) {
-    navigate(`/app/ai/chat/${id}`);
+    const params = new URLSearchParams(window.location.search);
+    const ws = params.get('ws');
+    const qs = ws ? `?ws=${ws}` : '';
+    navigate(`/app/ai/conversations/${id}${qs}`);
     onClose();
   }
 
@@ -200,12 +207,17 @@ export function ConversationSidebar({
               </p>
             </div>
           )}
-          {!searchQuery && conversations.length === 0 && (
+          {loading && conversations.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <p className="text-caption text-text-tertiary">Loading conversations...</p>
+            </div>
+          )}
+          {!searchQuery && !loading && conversations.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <MessageSquare className="h-8 w-8 text-text-tertiary mb-3" />
               <p className="text-body font-medium text-text-secondary">No conversations yet</p>
               <p className="text-caption text-text-tertiary mt-1">
-                Start your first conversation with Collabix AI.
+                Start a workspace conversation to collaborate with your team.
               </p>
             </div>
           )}
@@ -217,6 +229,7 @@ export function ConversationSidebar({
         <div className="border-t border-border-subtle px-3 py-3">
           <button
             type="button"
+            onClick={() => navigate(aiPath('/app/ai/prompts', workspaceId))}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-body text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
           >
             <BookMarked className="h-4 w-4" />

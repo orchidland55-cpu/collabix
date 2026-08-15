@@ -1,3 +1,5 @@
+﻿import { z } from 'zod';
+
 export const CANDIDATE_STATUSES = [
   'APPLIED', 'CV_REVIEW', 'HR_INTERVIEW', 'TECHNICAL_INTERVIEW',
   'FINAL_INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN',
@@ -28,16 +30,16 @@ export const candidateStatusLabel: Record<string, string> = {
 };
 
 export const CANDIDATE_SOURCES = [
-  'LINKEDIN', 'REFERRAL', 'COMPANY_WEBSITE', 'JOB_BOARD', 'RECRUITER', 'OTHER',
+  'LINKEDIN', 'INDEED', 'JOBLY', 'GMAIL', 'FACEBOOK', 'WEBSITE',
 ] as const;
 
 export const candidateSourceLabel: Record<string, string> = {
   LINKEDIN: 'LinkedIn',
-  REFERRAL: 'Referral',
-  COMPANY_WEBSITE: 'Company Website',
-  JOB_BOARD: 'Job Board',
-  RECRUITER: 'Recruiter',
-  OTHER: 'Other',
+  INDEED: 'Indeed',
+  JOBLY: 'Jobly',
+  GMAIL: 'Gmail',
+  FACEBOOK: 'Facebook',
+  WEBSITE: 'Website',
 };
 
 export const CONTRACT_TYPES = [
@@ -87,6 +89,12 @@ export const employmentStatusColor: Record<string, string> = {
   TERMINATED: 'danger',
   RETIRED: 'neutral',
 };
+
+const INACTIVE_EMPLOYMENT_STATUSES = ['RESIGNED', 'TERMINATED', 'RETIRED'];
+
+export function isActiveEmployee(status: string | undefined | null): boolean {
+  return typeof status === 'string' && !INACTIVE_EMPLOYMENT_STATUSES.includes(status);
+}
 
 export const SKILL_CATEGORIES = [
   'TECHNICAL', 'PROGRAMMING', 'DATABASE', 'DEVOPS', 'CLOUD', 'AI', 'MARKETING', 'DESIGN',
@@ -174,14 +182,12 @@ export const reviewPeriodLabel: Record<string, string> = {
   CUSTOM: 'Custom',
 };
 
-export const INTERVIEW_TYPES = ['HR', 'TECHNICAL', 'MANAGERIAL', 'FINAL', 'CUSTOM'] as const;
+export const INTERVIEW_TYPES = ['EMPLOYEE', 'INTERN', 'COMMERCIAL'] as const;
 
 export const interviewTypeColor: Record<string, string> = {
-  HR: 'info',
-  TECHNICAL: 'accent',
-  MANAGERIAL: 'warning',
-  FINAL: 'success',
-  CUSTOM: 'neutral',
+  EMPLOYEE: 'info',
+  INTERN: 'accent',
+  COMMERCIAL: 'success',
 };
 
 export const INTERVIEW_STATUSES = ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW'] as const;
@@ -265,7 +271,7 @@ export const employeeDocumentTypeLabel: Record<string, string> = {
   WORK_PERMIT: 'Work Permit',
   DIPLOMA: 'Diploma',
   CERTIFICATE: 'Certificate',
-  RESUME: 'Resume',
+  RESUME: 'CV / Resume',
   PERFORMANCE_REVIEW: 'Performance Review',
   PROMOTION: 'Promotion',
   SALARY: 'Salary',
@@ -322,3 +328,88 @@ export function formatTime(value: string | undefined | null): string {
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+export function toISOTimestamp(date: string | undefined | null, time?: string | undefined | null): string | undefined {
+  if (!date) return undefined;
+  const t = time && time.length > 0 ? time : '00:00';
+  const d = new Date(`${date}T${t}:00`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+export function toDateInputValue(iso: string | undefined | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export function toTimeInputValue(iso: string | undefined | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_INPUT_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function isHHMM(value: string | undefined | null): boolean {
+  return typeof value === 'string' && TIME_INPUT_PATTERN.test(value);
+}
+
+export function parseDateInput(value: string | undefined | null): Date | null {
+  if (!value || !DATE_INPUT_PATTERN.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d;
+}
+
+export function todayDateInputValue(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export const interviewScheduleSchema = z
+  .object({
+    candidateId: z.string().min(1, 'Candidate is required.'),
+    type: z.string().min(1, 'Type is required.'),
+    position: z.string().min(1, 'Position is required.'),
+    scheduledDate: z.string().min(1, 'Date is required.'),
+    startTime: z.string().min(1, 'Start time is required.'),
+    endTime: z.string().min(1, 'End time is required.'),
+  })
+  .superRefine((val, ctx) => {
+    const date = parseDateInput(val.scheduledDate);
+    if (!date) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['scheduledDate'], message: 'Date must be a valid date and cannot be in the past.' });
+      return;
+    }
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (date.getTime() < todayStart.getTime()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['scheduledDate'], message: 'Date must be a valid date and cannot be in the past.' });
+      return;
+    }
+    const isToday = date.getTime() === todayStart.getTime();
+
+    const startOk = isHHMM(val.startTime);
+    const endOk = isHHMM(val.endTime);
+    if (!startOk) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'Start time must be a valid time (HH:mm).' });
+    if (!endOk) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endTime'], message: 'End time must be a valid time (HH:mm).' });
+    if (!startOk || !endOk) return;
+
+    const startParts = val.startTime.split(':').map(Number);
+    const endParts = val.endTime.split(':').map(Number);
+    const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startParts[0], startParts[1]);
+    const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endParts[0], endParts[1]);
+
+    if (endDate.getTime() <= startDate.getTime()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endTime'], message: 'End time must be later than start time.' });
+    }
+    if (isToday && startDate.getTime() <= now.getTime()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'Start time must be later than the current time.' });
+    }
+  });

@@ -22,4 +22,16 @@ public interface AIHistoryRepository extends JpaRepository<AIHistory, UUID> {
             @Param("workspaceId") UUID workspaceId,
             Pageable pageable
     );
+
+    @Query("""
+            SELECT h FROM AIHistory h
+            WHERE h.workspace = :workspaceId
+              AND h.department = :departmentId
+            ORDER BY h.createdAt DESC
+            """)
+    Page<AIHistory> findByWorkspaceAndDepartmentPaginated(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("departmentId") UUID departmentId,
+            Pageable pageable
+    );
 }

@@ -1,6 +1,7 @@
 package com.trio.backend.dto.ai;
 
 import com.trio.backend.entity.ExecutiveReport;
+import com.trio.backend.enums.AIScopeType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -16,10 +17,13 @@ public class ReportingGenerateRequest {
     @NotNull
     private UUID workspaceId;
 
-    @NotNull
     private UUID departmentId;
 
     private UUID projectId;
+
+    private UUID teamId;
+
+    private AIScopeType scope;
 
     @NotBlank
     private String title;

@@ -9,6 +9,7 @@ import com.trio.backend.dto.user.UserSummaryResponse;
 import com.trio.backend.entity.TeamMember;
 import com.trio.backend.entity.User;
 import com.trio.backend.enums.RoleName;
+import com.trio.backend.enums.WorkspaceMemberStatus;
 import com.trio.backend.dto.user.UpdateProfileRequest;
 import com.trio.backend.dto.user.UpdateUserRequest;
 import org.mapstruct.*;
@@ -103,6 +104,7 @@ public interface UserMapper {
         }
         return user.getTeamMembers()
                 .stream()
+                .filter(tm -> tm.getStatus() == WorkspaceMemberStatus.ACTIVE)
                 .findFirst()
                 .map(tm -> tm.getTeam().getId())
                 .orElse(null);
@@ -114,6 +116,7 @@ public interface UserMapper {
         }
         return user.getTeamMembers()
                 .stream()
+                .filter(tm -> tm.getStatus() == WorkspaceMemberStatus.ACTIVE)
                 .findFirst()
                 .map(tm -> tm.getTeam().getName())
                 .orElse(null);

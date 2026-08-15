@@ -1,7 +1,9 @@
-import { useSearchParams } from 'react-router-dom';
 import { AIAnalyticsPage } from '../../components/ai/business';
+import { useEffectiveWorkspaceId } from '../../hooks/useEffectiveWorkspaceId';
+import { useAIPermissions } from '../../hooks/useAIPermissions';
 
 export function AnalyticsAIPage() {
-  const [searchParams] = useSearchParams();
-  return <AIAnalyticsPage workspaceId={searchParams.get('ws') ?? ''} departmentId={searchParams.get('dept') ?? ''} />;
+  const workspaceId = useEffectiveWorkspaceId();
+  const { departmentId } = useAIPermissions();
+  return <AIAnalyticsPage workspaceId={workspaceId} departmentId={departmentId ?? ''} />;
 }

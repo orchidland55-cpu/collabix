@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -249,7 +250,7 @@ class HandoverJournalServiceImplTest {
     @Test
     void listAccessibleShouldReturnPaginatedResults() {
         Page<HandoverJournal> page = new PageImpl<>(List.of(exampleJournal));
-        when(handoverJournalRepository.findAccessiblePaginated(eq(wsId), eq(deptId), isNull(), isNull(), isNull(), isNull(), any(PageRequest.class)))
+        when(handoverJournalRepository.findAll(any(Specification.class), any(PageRequest.class)))
                 .thenReturn(page);
         when(handoverJournalMapper.toResponse(exampleJournal)).thenReturn(exampleResponse);
 

@@ -33,6 +33,8 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     boolean existsByDepartment_IdAndName(UUID departmentId, String name);
 
+    boolean existsByDepartment_IdAndNameIgnoreCase(UUID departmentId, String name);
+
     boolean existsByIdAndDepartment_IdAndStatus(UUID projectId, UUID departmentId, WorkspaceStatus status);
 
     @Query("SELECT p FROM Project p " +
@@ -53,6 +55,18 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
             "ORDER BY p.name ASC")
     Page<Project> searchByDepartmentIdAndName(
             @Param("departmentId") UUID departmentId,
+            @Param("status") WorkspaceStatus status,
+            @Param("name") String name,
+            Pageable pageable
+    );
+
+    @Query("SELECT p FROM Project p " +
+            "WHERE p.department.workspace.id = :workspaceId " +
+            "AND p.status = :status " +
+            "AND LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')) " +
+            "ORDER BY p.name ASC")
+    Page<Project> searchByWorkspaceIdAndName(
+            @Param("workspaceId") UUID workspaceId,
             @Param("status") WorkspaceStatus status,
             @Param("name") String name,
             Pageable pageable

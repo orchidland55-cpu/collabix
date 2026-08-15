@@ -34,6 +34,8 @@ import java.util.UUID;
 public class DepartmentAuthorization {
 
     private static final String SUPER_ADMIN_AUTHORITY = "ROLE_SUPER_ADMIN";
+    private static final String ADMIN_AUTHORITY = "ROLE_ADMIN";
+    private static final String MANAGER_AUTHORITY = "ROLE_MANAGER";
 
     private final DepartmentRepository departmentRepository;
     private final WorkspaceAuthorization workspaceAuthorization;
@@ -68,25 +70,60 @@ public class DepartmentAuthorization {
             return false;
         }
 
-        // Workspace ADMIN/OWNER can view any department
-        if (workspaceAuthorization.canUpdateWorkspace(workspaceId, authentication)) {
+        // Workspace ADMIN/OWNER and global ADMIN can view any department
+        if (workspaceAuthorization.canUpdateWorkspace(workspaceId, authentication)
+                || hasRole(authentication, ADMIN_AUTHORITY)) {
             return true;
         }
 
-        // Regular users can only view their primary department
-        UUID userId = extractUserId(authentication);
-        if (userId == null) {
-            return false;
-        }
-
-        return userRepository.findById(userId)
-                .map(user -> user.getPrimaryDepartment() != null
-                        && user.getPrimaryDepartment().getId().equals(departmentId))
-                .orElse(false);
+        // MANAGER and MEMBER can only view their primary department
+        return belongsToPrimaryDepartment(authentication, departmentId);
     }
 
     /**
-     * Checks whether the authenticated user can manage (write) an ACTIVE Department.
+     * Checks whether the authenticated user can manage (create/update/restore) projects
+     * in the given department.
+     *
+     * <p>Workspace ADMIN/OWNER and global ADMIN can manage projects in any department.
+     * A global MANAGER can manage projects only in their {@code User.primaryDepartment}.
+     * Members are not granted project write access through this check.</p>
+     */
+    public boolean canManageDepartmentProjects(UUID workspaceId, UUID departmentId, Authentication authentication) {
+        if (isSuperAdmin(authentication)) {
+            return true;
+        }
+
+        if (!workspaceAuthorization.canViewWorkspace(workspaceId, authentication)) {
+            return false;
+        }
+
+        if (getActiveDepartment(workspaceId, departmentId).isEmpty()) {
+            return false;
+        }
+
+        if (workspaceAuthorization.canUpdateWorkspace(workspaceId, authentication)
+                || hasRole(authentication, ADMIN_AUTHORITY)) {
+            return true;
+        }
+
+        if (!hasRole(authentication, MANAGER_AUTHORITY)) {
+            return false;
+        }
+
+        return belongsToPrimaryDepartment(authentication, departmentId);
+    }
+
+    /**
+     * Checks whether the authenticated user can manage (create/update/restore) tasks
+     * in the given department.
+     *
+     * <p>Follows the same rules as {@link #canManageDepartmentProjects}.</p>
+     */
+    public boolean canManageDepartmentTasks(UUID workspaceId, UUID departmentId, Authentication authentication) {
+        return canManageDepartmentProjects(workspaceId, departmentId, authentication);
+    }
+
+    /**
      *
      * <p>Only workspace ADMIN/OWNER can manage departments. Department-level isolation
      * is not applied since write access implies full department management rights.</p>
@@ -118,11 +155,27 @@ public class DepartmentAuthorization {
     }
 
     private boolean isSuperAdmin(Authentication authentication) {
+        return hasRole(authentication, SUPER_ADMIN_AUTHORITY);
+    }
+
+    private boolean hasRole(Authentication authentication, String role) {
         return authentication != null
                 && authentication.isAuthenticated()
                 && authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch(SUPER_ADMIN_AUTHORITY::equals);
+                .anyMatch(role::equals);
+    }
+
+    private boolean belongsToPrimaryDepartment(Authentication authentication, UUID departmentId) {
+        UUID userId = extractUserId(authentication);
+        if (userId == null) {
+            return false;
+        }
+
+        return userRepository.findByIdWithRolesAndPrimaryDepartment(userId)
+                .map(user -> user.getPrimaryDepartment() != null
+                        && user.getPrimaryDepartment().getId().equals(departmentId))
+                .orElse(false);
     }
 
     /**

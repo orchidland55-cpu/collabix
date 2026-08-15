@@ -50,3 +50,14 @@ export function listArchivedProjects(workspaceId: string, departmentId: string) 
     `/workspaces/${workspaceId}/departments/${departmentId}/projects/archived`
   );
 }
+
+export function listWorkspaceProjects(workspaceId: string, search?: string, page = 0, size = 100) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  params.set('page', String(page));
+  params.set('size', String(size));
+  const qs = params.toString();
+  return apiClient.get<PageResponse<ProjectResponse>>(
+    `/workspaces/${workspaceId}/projects${qs ? `?${qs}` : ''}`,
+  );
+}

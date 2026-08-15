@@ -9,8 +9,8 @@ import com.trio.backend.dto.hr.InterviewParticipantResponse;
 import com.trio.backend.dto.hr.InterviewResponse;
 import com.trio.backend.dto.hr.InterviewStatistics;
 import com.trio.backend.dto.hr.UpdateInterviewRequest;
+import com.trio.backend.dto.hr.UpdateInterviewNotesRequest;
 import com.trio.backend.entity.Candidate;
-import com.trio.backend.entity.CandidateStatusHistory;
 import com.trio.backend.entity.Interview;
 import com.trio.backend.entity.InterviewFeedback;
 import com.trio.backend.entity.InterviewParticipant;
@@ -22,7 +22,6 @@ import com.trio.backend.exception.ConflictException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.mapper.InterviewMapper;
 import com.trio.backend.repository.CandidateRepository;
-import com.trio.backend.repository.CandidateStatusHistoryRepository;
 import com.trio.backend.repository.DepartmentRepository;
 import com.trio.backend.repository.InterviewFeedbackRepository;
 import com.trio.backend.repository.InterviewParticipantRepository;
@@ -44,10 +43,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
-import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -56,14 +53,6 @@ import java.util.UUID;
 @Transactional
 @Slf4j
 public class InterviewServiceImpl implements InterviewService {
-
-    private static final Map<InterviewType, CandidateStatus> INTERVIEW_TO_CANDIDATE_STATUS = new EnumMap<>(InterviewType.class);
-
-    static {
-        INTERVIEW_TO_CANDIDATE_STATUS.put(InterviewType.HR, CandidateStatus.HR_INTERVIEW);
-        INTERVIEW_TO_CANDIDATE_STATUS.put(InterviewType.TECHNICAL, CandidateStatus.TECHNICAL_INTERVIEW);
-        INTERVIEW_TO_CANDIDATE_STATUS.put(InterviewType.FINAL, CandidateStatus.FINAL_INTERVIEW);
-    }
 
     private static final Set<CandidateStatus> TERMINAL_STATUSES = EnumSet.of(
             CandidateStatus.HIRED, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN
@@ -77,7 +66,6 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewParticipantRepository participantRepository;
     private final InterviewFeedbackRepository feedbackRepository;
     private final CandidateRepository candidateRepository;
-    private final CandidateStatusHistoryRepository candidateStatusHistoryRepository;
     private final DepartmentRepository departmentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
@@ -93,6 +81,17 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BadRequestException("Cannot schedule interview for candidate in terminal status: " + candidate.getCurrentStatus());
         }
 
+        if (request.getPosition() == null || request.getPosition().isBlank()) {
+            throw new BadRequestException("Position is required.");
+        }
+
+        validateInterviewDate(request.getScheduledDate());
+        if (request.getStartTime() == null) {
+            throw new BadRequestException("Start time is required.");
+        }
+        if (request.getEndTime() == null) {
+            throw new BadRequestException("End time is required.");
+        }
         validateInterviewTiming(request.getStartTime(), request.getEndTime(), false);
 
         boolean hasActive = interviewRepository.existsByCandidate_IdAndTypeAndStatusIn(
@@ -106,6 +105,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .type(request.getType())
                 .status(InterviewStatus.SCHEDULED)
                 .title(request.getTitle() != null ? request.getTitle() : request.getType().name())
+                .position(request.getPosition())
                 .description(request.getDescription())
                 .scheduledDate(request.getScheduledDate())
                 .startTime(request.getStartTime())
@@ -116,8 +116,6 @@ public class InterviewServiceImpl implements InterviewService {
                 .build();
 
         Interview saved = interviewRepository.save(interview);
-
-        updateCandidateStatusFromInterview(candidate, request.getType(), userId);
 
         notifyInterviewScheduled(workspaceId, candidate, saved);
 
@@ -167,6 +165,9 @@ public class InterviewServiceImpl implements InterviewService {
         if (request.getTitle() != null) {
             interview.setTitle(request.getTitle());
         }
+        if (request.getPosition() != null) {
+            interview.setPosition(request.getPosition());
+        }
         if (request.getDescription() != null) {
             interview.setDescription(request.getDescription());
         }
@@ -194,6 +195,19 @@ public class InterviewServiceImpl implements InterviewService {
 
         Interview saved = interviewRepository.save(interview);
         log.info("Interview updated: {} by user {}", saved.getId(), userId);
+        return interviewMapper.toResponse(saved);
+    }
+
+    @Override
+    public InterviewResponse updateNotes(UUID workspaceId, UUID departmentId, UUID candidateId, UUID interviewId, UpdateInterviewNotesRequest request) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+
+        Interview interview = findActiveInterview(workspaceId, departmentId, candidateId, interviewId);
+
+        interview.setNotes(request.getNotes());
+        Interview saved = interviewRepository.save(interview);
+
+        log.info("Interview notes updated: {} by user {}", interviewId, userId);
         return interviewMapper.toResponse(saved);
     }
 
@@ -420,6 +434,16 @@ public class InterviewServiceImpl implements InterviewService {
         return stats;
     }
 
+    private void validateInterviewDate(Instant scheduledDate) {
+        if (scheduledDate == null) {
+            throw new BadRequestException("Interview date is required.");
+        }
+        Instant startOfToday = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        if (scheduledDate.isBefore(startOfToday)) {
+            throw new BadRequestException("Cannot schedule an interview in the past.");
+        }
+    }
+
     private void validateInterviewTiming(Instant startTime, Instant endTime, boolean allowPast) {
         if (startTime != null && endTime != null && !endTime.isAfter(startTime)) {
             throw new BadRequestException("End time must be after start time.");
@@ -427,31 +451,6 @@ public class InterviewServiceImpl implements InterviewService {
         if (!allowPast && startTime != null && startTime.isBefore(Instant.now())) {
             throw new BadRequestException("Cannot schedule an interview in the past.");
         }
-    }
-
-    private void updateCandidateStatusFromInterview(Candidate candidate, InterviewType type, UUID userId) {
-        CandidateStatus targetStatus = INTERVIEW_TO_CANDIDATE_STATUS.get(type);
-        if (targetStatus == null) {
-            return;
-        }
-        if (candidate.getCurrentStatus() == targetStatus) {
-            return;
-        }
-
-        CandidateStatus previousStatus = candidate.getCurrentStatus();
-        candidate.setCurrentStatus(targetStatus);
-
-        CandidateStatusHistory history = CandidateStatusHistory.builder()
-                .candidate(candidate)
-                .previousStatus(previousStatus)
-                .newStatus(targetStatus)
-                .changedBy(userId)
-                .reason("Auto-updated: " + type + " interview scheduled")
-                .build();
-
-        candidate.getStatusHistories().add(history);
-        candidateRepository.save(candidate);
-        log.info("Candidate status auto-updated: {} â†’ {} due to interview scheduling", previousStatus, targetStatus);
     }
 
     private void notifyInterviewScheduled(UUID workspaceId, Candidate candidate, Interview interview) {

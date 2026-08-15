@@ -1,6 +1,7 @@
 package com.trio.backend.dto.workspace;
 
 import com.trio.backend.dto.user.UserResponse;
+import com.trio.backend.enums.WorkspaceRole;
 import com.trio.backend.enums.WorkspaceStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,6 +28,8 @@ public class WorkspaceResponse {
     private WorkspaceStatus status;
 
     private UserResponse owner;
+
+    private WorkspaceRole myRole;
 
     private Long memberCount;
 

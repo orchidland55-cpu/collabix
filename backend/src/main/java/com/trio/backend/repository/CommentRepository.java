@@ -206,5 +206,23 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
             @Param("status") CommentStatus status
     );
 
+    @Query(value = """
+            SELECT CAST(c.created_at AS date) AS day, COUNT(*) AS cnt
+            FROM comments c
+            INNER JOIN tasks t ON c.task_id = t.id
+            INNER JOIN projects p ON t.project_id = p.id
+            INNER JOIN departments d ON p.department_id = d.id
+            WHERE d.workspace_id = :workspaceId
+              AND c.status = 'ACTIVE'
+              AND c.created_at >= :from
+              AND c.created_at < :toExclusive
+            GROUP BY CAST(c.created_at AS date)
+            """, nativeQuery = true)
+    List<Object[]> countActiveByWorkspaceIdGroupedByDay(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("from") Instant from,
+            @Param("toExclusive") Instant toExclusive
+    );
+
 }
 

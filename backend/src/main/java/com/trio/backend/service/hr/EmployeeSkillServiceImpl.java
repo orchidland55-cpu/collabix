@@ -121,6 +121,7 @@ public class EmployeeSkillServiceImpl implements EmployeeSkillService {
 
         EmployeeSkillSearchCriteria criteria = new EmployeeSkillSearchCriteria();
         criteria.setEmployeeId(employeeId);
+        criteria.setActive(true);
 
         return skillRepository.findAll(EmployeeSkillSpecification.withFilter(criteria), pageable)
                 .map(skillMapper::toResponse);

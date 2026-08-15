@@ -36,7 +36,7 @@ public class AttachmentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_UPLOAD')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_UPLOAD')")
     @Operation(
             summary = "Create a attachment",
             security = @SecurityRequirement(name = "bearer"),
@@ -65,7 +65,7 @@ public class AttachmentController {
     }
 
     @GetMapping("/{attachmentId}")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
     @Operation(
             summary = "Resorteve a attachment",
             security = @SecurityRequirement(name = "bearer"),
@@ -91,7 +91,7 @@ public class AttachmentController {
     }
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
     @Operation(
             summary = "List attachments of a task",
             security = @SecurityRequirement(name = "bearer"),
@@ -116,7 +116,7 @@ public class AttachmentController {
     }
 
     @PutMapping("/{attachmentId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_UPDATE')")
     @Operation(
             summary = "Update a attachment",
             security = @SecurityRequirement(name = "bearer"),
@@ -146,7 +146,7 @@ public class AttachmentController {
     // ==================== COMMENT ATTACHMENTS ====================
 
     @GetMapping("/comments/{commentId}/attachments")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_READ')")
     @Operation(
             summary = "List attachments d'un comment",
             security = @SecurityRequirement(name = "bearer")
@@ -188,7 +188,7 @@ public class AttachmentController {
 
     @DeleteMapping("/comments/{commentId}/attachments/{attachmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_DELETE')")
     @Operation(
             summary = "Delete a attachment d'un comment",
             security = @SecurityRequirement(name = "bearer")
@@ -206,7 +206,7 @@ public class AttachmentController {
 
     @DeleteMapping("/{attachmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ATTACHMENT_DELETE')")
     @Operation(
             summary = "Delete a attachment",
             security = @SecurityRequirement(name = "bearer"),

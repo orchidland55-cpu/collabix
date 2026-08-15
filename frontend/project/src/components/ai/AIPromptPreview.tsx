@@ -12,17 +12,23 @@ export interface AIPromptItem {
 export interface AIPromptPreviewProps {
   items: AIPromptItem[];
   onRun?: (id: string) => void;
+  onViewAll?: () => void;
   className?: string;
 }
 
-export function AIPromptPreview({ items, onRun, className }: AIPromptPreviewProps) {
+export function AIPromptPreview({ items, onRun, onViewAll, className }: AIPromptPreviewProps) {
   return (
     <div className={cn('rounded-xl border border-border-subtle bg-elevated', className)}>
       <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
         <div>
-          <p className="text-section font-semibold text-text-primary">Favorite Prompts</p>
-          <p className="mt-0.5 text-caption text-text-tertiary">Your most-used AI prompts</p>
+          <p className="text-section font-semibold text-text-primary">Prompt Library</p>
+          <p className="mt-0.5 text-caption text-text-tertiary">Active AI prompt templates</p>
         </div>
+        {onViewAll && items.length > 0 && (
+          <button type="button" onClick={onViewAll} className="text-caption font-medium text-accent-600 hover:text-accent-700 dark:text-accent-300">
+            View all
+          </button>
+        )}
       </div>
       <div className="px-3 py-2">
         {items.length === 0 ? (

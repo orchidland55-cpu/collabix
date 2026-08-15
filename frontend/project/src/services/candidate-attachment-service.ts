@@ -70,7 +70,6 @@ export const candidateAttachmentService = {
     return apiClient.post<CandidateAttachmentResponse>(
       `${base(wsId, deptId, candidateId)}`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
   },
 
@@ -84,7 +83,6 @@ export const candidateAttachmentService = {
     return apiClient.put<CandidateAttachmentResponse>(
       `${base(wsId, deptId, candidateId)}/${attachmentId}`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
   },
 

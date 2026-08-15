@@ -34,6 +34,8 @@ public class AnalyticsAIController {
                 request.getWorkspaceId(),
                 request.getDepartmentId(),
                 request.getProjectId(),
+                request.getTeamId(),
+                request.getScope(),
                 request.getStartDate(),
                 request.getEndDate()
         );

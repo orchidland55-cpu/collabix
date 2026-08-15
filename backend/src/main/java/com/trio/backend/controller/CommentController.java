@@ -35,7 +35,7 @@ public class CommentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_CREATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_CREATE')")
     @Operation(
             summary = "Create a comment",
             security = @SecurityRequirement(name = "bearer"),
@@ -64,7 +64,7 @@ public class CommentController {
     }
 
     @GetMapping("/{commentId}")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_READ')")
     @Operation(
             summary = "Resorteve a comment",
             security = @SecurityRequirement(name = "bearer"),
@@ -90,7 +90,7 @@ public class CommentController {
     }
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_READ')")
     @Operation(
             summary = "List the comments of a task",
             security = @SecurityRequirement(name = "bearer"),
@@ -115,7 +115,7 @@ public class CommentController {
     }
 
     @PutMapping("/{commentId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_UPDATE')")
     @Operation(
             summary = "Update a comment",
             security = @SecurityRequirement(name = "bearer"),
@@ -144,7 +144,7 @@ public class CommentController {
 
     @DeleteMapping("/{commentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'COMMENT_DELETE')")
     @Operation(
             summary = "Delete a comment",
             security = @SecurityRequirement(name = "bearer"),

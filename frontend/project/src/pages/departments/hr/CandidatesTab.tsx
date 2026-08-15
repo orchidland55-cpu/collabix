@@ -14,7 +14,10 @@ import { useToast } from '../../../components/ui/Toast';
 import { useCandidatesList, useCreateCandidate, useUpdateCandidate, useDeleteCandidate, useChangeCandidateStatus, useCandidateTimeline, useCandidateNotes, useCreateCandidateNote, useCandidateInterviews, useCandidateStats } from '../../../services/candidate-hooks';
 import type { CandidateResponse, CreateCandidateRequest } from '../../../services/candidate-service';
 import { useCandidateAttachments, useUploadCandidateAttachment, useDeleteCandidateAttachment, useCandidateAttachmentStats } from '../../../services/candidate-attachment-hooks';
+import type { CandidateAttachmentResponse } from '../../../services/candidate-attachment-service';
 import { candidateAttachmentService } from '../../../services/candidate-attachment-service';
+import { DocumentViewerModal } from '../../../components/documents/DocumentViewerModal';
+import { downloadAuthenticatedFile } from '../../../lib/file-download';
 import { CANDIDATE_STATUSES, CANDIDATE_SOURCES, candidateStatusColor, candidateStatusLabel, candidateSourceLabel, NOTE_CATEGORIES, noteCategoryLabel, NOTE_PRIORITIES, notePriorityColor, NOTE_VISIBILITIES, noteVisibilityLabel, formatEnum, formatDateTime } from './hr-constants';
 
 export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }) {
@@ -54,6 +57,7 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
   const [noteForm, setNoteForm] = useState({ title: '', category: 'GENERAL', priority: 'MEDIUM', content: '', visibility: 'DEPARTMENT' });
   const createNote = useCreateCandidateNote(wsId, deptId, detail?.id ?? '');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [viewer, setViewer] = useState<{ attachment: CandidateAttachmentResponse } | null>(null);
 
   const filtered = candidates.filter((c) => {
     if (statusFilter && c.currentStatus !== statusFilter) return false;
@@ -80,12 +84,12 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
     if (editing) {
       updateCandidate.mutate(payload, {
         onSuccess: () => { toast({ title: 'Candidate updated', tone: 'success' }); setShowForm(false); },
-        onError: () => toast({ title: 'Failed to update candidate', tone: 'danger' }),
+        onError: (err) => toast({ title: 'Failed to update candidate', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
       });
     } else {
       createCandidate.mutate(payload, {
         onSuccess: () => { toast({ title: 'Candidate created', tone: 'success' }); setShowForm(false); },
-        onError: () => toast({ title: 'Failed to create candidate', tone: 'danger' }),
+        onError: (err) => toast({ title: 'Failed to create candidate', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
       });
     }
   };
@@ -93,7 +97,7 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
   const handleStatusChange = (c: CandidateResponse, newStatus: string) => {
     changeStatus.mutate({ id: c.id, data: { newStatus } }, {
       onSuccess: () => toast({ title: 'Status updated', tone: 'success' }),
-      onError: () => toast({ title: 'Failed to update status', tone: 'danger' }),
+      onError: (err) => toast({ title: 'Failed to update status', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
     });
   };
 
@@ -128,8 +132,6 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
   if (isError) {
     return <div className="flex flex-col items-center justify-center py-20 gap-3"><p className="text-body font-medium text-danger-600">Failed to load candidates</p><p className="text-caption text-text-tertiary">Please try again later.</p></div>;
   }
-
-  const downloadPrefix = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
   return (
     <div className="flex flex-col gap-4">
@@ -292,17 +294,19 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
                 ) : (
                   <div className="space-y-2">
                     {attachments.map((a) => (
-                      <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border border-border-subtle">
+                      <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border border-border-subtle cursor-pointer hover:bg-surface-2 transition-colors"
+                        onClick={() => setViewer({ attachment: a })}>
                         <FileText className="h-4 w-4 text-text-tertiary" />
                         <div className="flex-1 min-w-0">
                           <p className="text-caption font-medium text-text-primary">{a.originalFileName}</p>
                           <p className="text-2xs text-text-tertiary">{formatEnum(a.attachmentType)} • v{a.fileVersion}</p>
                         </div>
-                        <a href={`${downloadPrefix}${candidateAttachmentService.downloadUrl(wsId, deptId, detail.id, a.id)}`} target="_blank" rel="noreferrer">
-                          <IconButton label="Download" variant="ghost" size="sm"><Download className="h-4 w-4" /></IconButton>
-                        </a>
+                        <IconButton label="Download" variant="ghost" size="sm"
+                          onClick={(e) => { e.stopPropagation(); downloadAuthenticatedFile(candidateAttachmentService.downloadUrl(wsId, deptId, detail.id, a.id), a.originalFileName).catch(() => toast({ title: 'Failed to download document', tone: 'danger' })); }}>
+                          <Download className="h-4 w-4" />
+                        </IconButton>
                         <IconButton label="Delete" variant="ghost" size="sm" className="text-danger-600"
-                          onClick={() => deleteAttachment.mutate(a.id, { onSuccess: () => toast({ title: 'Attachment deleted', tone: 'success' }) })}>
+                          onClick={(e) => { e.stopPropagation(); deleteAttachment.mutate(a.id, { onSuccess: () => toast({ title: 'Attachment deleted', tone: 'success' }) }); }}>
                           <Trash2 className="h-4 w-4" />
                         </IconButton>
                       </div>
@@ -311,6 +315,17 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
                 )}
               </CardBody>
             </Card>
+
+            {viewer && (
+              <DocumentViewerModal
+                open
+                onClose={() => setViewer(null)}
+                title={viewer.attachment.originalFileName}
+                fileName={viewer.attachment.originalFileName}
+                mimeType={viewer.attachment.mimeType}
+                url={candidateAttachmentService.downloadUrl(wsId, deptId, detail.id, viewer.attachment.id)}
+              />
+            )}
 
             <div className="grid lg:grid-cols-2 gap-4">
               <Card>

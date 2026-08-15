@@ -2,8 +2,10 @@ import { apiClient } from '../lib/api';
 
 export interface AnalyticsAIGenerateRequest {
   workspaceId: string;
-  departmentId: string;
+  departmentId?: string;
   projectId?: string;
+  teamId?: string;
+  scope?: 'WORKSPACE' | 'DEPARTMENT' | 'PROJECT' | 'TEAM';
   startDate?: string;
   endDate?: string;
 }

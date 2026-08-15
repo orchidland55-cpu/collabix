@@ -20,5 +20,7 @@ public interface ReportingAIService {
 
     ReportingResponse reject(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId);
 
+    ReportingResponse getById(UUID workspaceId, UUID reportId);
+
     Page<ReportingResponse> getHistory(UUID workspaceId, int page, int size);
 }

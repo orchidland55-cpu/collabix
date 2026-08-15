@@ -1,7 +1,9 @@
-import { useSearchParams } from 'react-router-dom';
 import { AIKnowledgePage } from '../../components/ai/business';
+import { useEffectiveWorkspaceId } from '../../hooks/useEffectiveWorkspaceId';
+import { useAIPermissions } from '../../hooks/useAIPermissions';
 
 export function KnowledgeAIPage() {
-  const [searchParams] = useSearchParams();
-  return <AIKnowledgePage workspaceId={searchParams.get('ws') ?? ''} departmentId={searchParams.get('dept') ?? ''} />;
+  const workspaceId = useEffectiveWorkspaceId();
+  const { departmentId } = useAIPermissions();
+  return <AIKnowledgePage workspaceId={workspaceId} departmentId={departmentId ?? ''} />;
 }

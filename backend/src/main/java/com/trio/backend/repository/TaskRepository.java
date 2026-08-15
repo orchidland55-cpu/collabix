@@ -1,6 +1,7 @@
 package com.trio.backend.repository;
 
 import com.trio.backend.entity.Task;
+import com.trio.backend.enums.TaskPriority;
 import com.trio.backend.enums.TaskStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,15 +28,16 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     boolean existsByIdAndProject_IdAndStatus(UUID taskId, UUID projectId, TaskStatus status);
 
     @Query("SELECT t FROM Task t WHERE t.project.id = :projectId " +
-            "AND (:search IS NULL OR LOWER(t.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-            "AND (:status IS NULL OR t.status = :status) " +
+            "AND LOWER(t.title) LIKE LOWER(CONCAT('%', COALESCE(:search, ''), '%')) " +
+            "AND (:statusFilterDisabled = true OR t.status IN :statuses) " +
             "AND (:priority IS NULL OR t.priority = :priority) " +
             "AND (:assigneeId IS NULL OR t.assignee.id = :assigneeId) " +
             "ORDER BY t.updatedAt DESC")
     Page<Task> findFiltered(@Param("projectId") UUID projectId,
                             @Param("search") String search,
-                            @Param("status") String status,
-                            @Param("priority") String priority,
+                            @Param("statuses") List<TaskStatus> statuses,
+                            @Param("statusFilterDisabled") boolean statusFilterDisabled,
+                            @Param("priority") TaskPriority priority,
                             @Param("assigneeId") UUID assigneeId,
                             Pageable pageable);
 
@@ -165,6 +167,31 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     @Query("SELECT COUNT(t) FROM Task t WHERE t.createdBy = :userId AND t.project.department.workspace.id = :workspaceId AND t.dueAt IS NOT NULL AND t.dueAt < :now AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)")
     long countOverdueByCreatedByAndWorkspaceId(@Param("userId") UUID userId, @Param("workspaceId") UUID workspaceId, @Param("now") Instant now);
 
+    @Query("""
+            SELECT t FROM Task t
+            JOIN FETCH t.project p
+            WHERE p.department.workspace.id = :workspaceId
+            AND (p.department.id = :departmentId OR t.assignee.id = :userId)
+            AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)
+            ORDER BY t.updatedAt DESC
+            """)
+    List<Task> findLatestManagerTasks(@Param("workspaceId") UUID workspaceId,
+                                      @Param("departmentId") UUID departmentId,
+                                      @Param("userId") UUID userId,
+                                      Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(t) FROM Task t
+            WHERE t.project.department.workspace.id = :workspaceId
+            AND (t.project.department.id = :departmentId OR t.assignee.id = :userId)
+            AND t.dueAt IS NOT NULL AND t.dueAt < :now
+            AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)
+            """)
+    long countOverdueManagerTasks(@Param("workspaceId") UUID workspaceId,
+                                  @Param("departmentId") UUID departmentId,
+                                  @Param("userId") UUID userId,
+                                  @Param("now") Instant now);
+
     @Query("SELECT COUNT(t) FROM Task t WHERE t.sprint.id = :sprintId AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)")
     long countActiveBySprintId(@Param("sprintId") UUID sprintId);
 
@@ -176,4 +203,30 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     @Query("SELECT COUNT(t) FROM Task t WHERE t.marketingCampaign.id = :marketingCampaignId AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)")
     long countActiveByMarketingCampaignId(@Param("marketingCampaignId") UUID marketingCampaignId);
+
+    @Query(value = """
+            SELECT CAST(t.created_at AS date) AS day, COUNT(*) AS cnt
+            FROM tasks t
+            INNER JOIN projects p ON t.project_id = p.id
+            INNER JOIN departments d ON p.department_id = d.id
+            WHERE d.workspace_id = :workspaceId
+              AND t.created_at >= :from
+              AND t.created_at < :toExclusive
+            GROUP BY CAST(t.created_at AS date)
+            """, nativeQuery = true)
+    List<Object[]> countCreatedByWorkspaceIdGroupedByDay(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("from") Instant from,
+            @Param("toExclusive") Instant toExclusive
+    );
+
+    @Query("""
+            SELECT t.project.id, t.status, COUNT(t)
+            FROM Task t
+            WHERE t.project.department.workspace.id = :workspaceId
+              AND t.project.status = com.trio.backend.enums.WorkspaceStatus.ACTIVE
+              AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)
+            GROUP BY t.project.id, t.status
+            """)
+    List<Object[]> countActiveTasksByProjectAndStatusForWorkspace(@Param("workspaceId") UUID workspaceId);
 }

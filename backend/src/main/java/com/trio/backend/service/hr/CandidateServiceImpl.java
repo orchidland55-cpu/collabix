@@ -39,7 +39,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -48,19 +48,6 @@ import java.util.stream.Collectors;
 @Transactional
 @Slf4j
 public class CandidateServiceImpl implements CandidateService {
-
-    private static final Map<CandidateStatus, Set<CandidateStatus>> ALLOWED_TRANSITIONS = Map.of(
-            CandidateStatus.APPLIED, EnumSet.of(CandidateStatus.CV_REVIEW, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN),
-            CandidateStatus.CV_REVIEW, EnumSet.of(CandidateStatus.HR_INTERVIEW, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN),
-            CandidateStatus.HR_INTERVIEW, EnumSet.of(CandidateStatus.TECHNICAL_INTERVIEW, CandidateStatus.FINAL_INTERVIEW, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN),
-            CandidateStatus.TECHNICAL_INTERVIEW, EnumSet.of(CandidateStatus.FINAL_INTERVIEW, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN),
-            CandidateStatus.FINAL_INTERVIEW, EnumSet.of(CandidateStatus.OFFER, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN),
-            CandidateStatus.OFFER, EnumSet.of(CandidateStatus.HIRED, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN)
-    );
-
-    private static final Set<CandidateStatus> TERMINAL_STATUSES = EnumSet.of(
-            CandidateStatus.HIRED, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN
-    );
 
     private final CandidateRepository candidateRepository;
     private final CandidateStatusHistoryRepository candidateStatusHistoryRepository;
@@ -76,8 +63,24 @@ public class CandidateServiceImpl implements CandidateService {
 
         Department department = findActiveDepartment(workspaceId, departmentId);
 
-        if (candidateRepository.existsByDepartment_IdAndEmail(departmentId, request.getEmail())) {
+        if (candidateRepository.existsByDepartment_IdAndEmailAndArchivedFalse(departmentId, request.getEmail())) {
             throw new ConflictException("A candidate with this email already exists in this department.");
+        }
+
+        Optional<Candidate> archivedCandidate = candidateRepository.findByDepartment_IdAndEmail(departmentId, request.getEmail());
+        if (archivedCandidate.isPresent()) {
+            Candidate revived = archivedCandidate.get();
+            revived.setArchived(false);
+            revived.setFirstName(request.getFirstName());
+            revived.setLastName(request.getLastName());
+            revived.setPhone(request.getPhone());
+            revived.setPosition(request.getPosition());
+            revived.setSource(request.getSource());
+            revived.setCurrentStatus(CandidateStatus.APPLIED);
+            revived.setRecruiterId(userId);
+            Candidate saved = candidateRepository.save(revived);
+            log.info("Candidate revived: {} {} (id={}) by user {}", saved.getFirstName(), saved.getLastName(), saved.getId(), userId);
+            return candidateMapper.toResponse(saved);
         }
 
         Candidate candidate = Candidate.builder()
@@ -134,7 +137,7 @@ public class CandidateServiceImpl implements CandidateService {
         if (request.getEmail() != null) {
             String newEmail = request.getEmail();
             if (!newEmail.equals(candidate.getEmail())
-                    && candidateRepository.existsByDepartment_IdAndEmail(departmentId, newEmail)) {
+                    && candidateRepository.existsByDepartment_IdAndEmailAndArchivedFalse(departmentId, newEmail)) {
                 throw new ConflictException("A candidate with this email already exists in this department.");
             }
             candidate.setEmail(newEmail);
@@ -176,16 +179,6 @@ public class CandidateServiceImpl implements CandidateService {
 
         if (currentStatus == newStatus) {
             throw new BadRequestException("Candidate is already in status: " + newStatus);
-        }
-
-        if (TERMINAL_STATUSES.contains(currentStatus)) {
-            throw new BadRequestException("Cannot change status from terminal status: " + currentStatus);
-        }
-
-        Set<CandidateStatus> allowed = ALLOWED_TRANSITIONS.get(currentStatus);
-        if (allowed == null || !allowed.contains(newStatus)) {
-            throw new BadRequestException(
-                    "Invalid status transition from " + currentStatus + " to " + newStatus);
         }
 
         CandidateStatusHistory history = CandidateStatusHistory.builder()

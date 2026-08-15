@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, FileText, Archive, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Textarea } from '../../../components/ui/Textarea';
+import { Select } from '../../../components/ui/Select';
 import { Button } from '../../../components/ui/Button';
 import {
   useUploadDocument,
@@ -11,8 +12,10 @@ import {
   useArchiveDocument,
   useRestoreDocument,
 } from '../../../services/document-hooks';
+import { useWorkspaceProjects } from '../../../services/project-hooks';
 import type { DocumentResponse } from '../types/document-types';
 import { formatFileSize } from '../types/document-types';
+import { getUploadErrorMessage, logUploadError } from '../../../lib/upload-error';
 
 /* ------------------------------------------------------------------ */
 /*  UploadDocumentModal                                                */
@@ -22,12 +25,16 @@ export interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   wsId: string;
-  deptId: string;
-  projId: string;
+  deptId?: string;
+  projId?: string;
 }
 
-export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: UploadDocumentModalProps) {
-  const uploadMutation = useUploadDocument(wsId, deptId, projId);
+export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId = '' }: UploadDocumentModalProps) {
+  const needsProjectSelection = !deptId || !projId;
+  const uploadMutation = useUploadDocument(wsId, deptId || undefined, projId || undefined);
+  const { data: projectsData, isLoading: projectsLoading } = useWorkspaceProjects(needsProjectSelection ? wsId : undefined);
+  const projects = projectsData?.content ?? [];
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -36,16 +43,26 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: U
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId),
+    [projects, selectedProjectId],
+  );
+
+  const effectiveDeptId = needsProjectSelection ? selectedProject?.departmentId : deptId;
+  const effectiveProjId = needsProjectSelection ? selectedProject?.id : projId;
+
   useEffect(() => {
     if (isOpen) {
+      setSelectedProjectId(projId || '');
       setFile(null);
       setTitle('');
       setDescription('');
       setCategory('');
       setTags('');
       setError(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [isOpen]);
+  }, [isOpen, projId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] ?? null;
@@ -58,6 +75,10 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: U
       setError('Please select a file to upload.');
       return;
     }
+    if (!effectiveDeptId || !effectiveProjId) {
+      setError('Please select a project to upload this document to.');
+      return;
+    }
     setError(null);
     try {
       await uploadMutation.mutateAsync({
@@ -66,12 +87,17 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: U
         description: description.trim() || undefined,
         category: category.trim() || undefined,
         tags: tags.trim() || undefined,
+        departmentId: effectiveDeptId,
+        projectId: effectiveProjId,
       });
       onClose();
-    } catch {
-      setError('Failed to upload document. Please try again.');
+    } catch (err) {
+      logUploadError('project-document', err);
+      setError(getUploadErrorMessage(err));
     }
   };
+
+  const canSubmit = !!file && !!effectiveDeptId && !!effectiveProjId && !uploadMutation.isPending;
 
   return (
     <Modal
@@ -83,13 +109,30 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: U
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!file || uploadMutation.isPending} leftIcon={<Upload className="h-4 w-4" />}>
+          <Button onClick={handleSubmit} disabled={!canSubmit} leftIcon={<Upload className="h-4 w-4" />}>
             {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
           </Button>
         </div>
       }
     >
       <div className="flex flex-col gap-4">
+        {needsProjectSelection && (
+          <Select
+            label="Project *"
+            value={selectedProjectId}
+            onChange={(e) => {
+              setSelectedProjectId(e.target.value);
+              setError(null);
+            }}
+            options={[
+              { value: '', label: projectsLoading ? 'Loading projects...' : 'Select a project...' },
+              ...projects.map((p) => ({
+                value: p.id,
+                label: p.departmentName ? `${p.name} (${p.departmentName})` : p.name,
+              })),
+            ]}
+          />
+        )}
         <div>
           <label className="mb-1.5 block text-caption font-medium text-text-secondary">File *</label>
           <input
@@ -109,9 +152,12 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId, projId }: U
         <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional document title" />
         <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" rows={3} />
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Reports" />
+          <Input label="Category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. CV" />
           <Input label="Tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Comma-separated" />
         </div>
+        {needsProjectSelection && !projectsLoading && projects.length === 0 && (
+          <p className="text-caption text-warning-600">No projects are available. Create a project before uploading documents.</p>
+        )}
         {error && <p className="text-caption text-danger-600">{error}</p>}
       </div>
     </Modal>

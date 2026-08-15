@@ -106,4 +106,14 @@ public class ReportingAIController {
         Page<ReportingResponse> history = reportingAIService.getHistory(workspaceId, page, size);
         return ApiResponse.success("History retrieved successfully.", history);
     }
+
+    @PreAuthorize("@permissionEvaluator.hasPermission(authentication, 'REPORT_READ')")
+    @Operation(summary = "Retrieve a single executive report")
+    @GetMapping("/{reportId}")
+    public ApiResponse<ReportingResponse> getById(
+            @PathVariable UUID reportId,
+            @RequestParam UUID workspaceId) {
+        return ApiResponse.success("Executive report retrieved successfully.",
+                reportingAIService.getById(workspaceId, reportId));
+    }
 }

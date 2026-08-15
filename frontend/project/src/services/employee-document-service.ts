@@ -89,7 +89,6 @@ export const employeeDocumentService = {
     return apiClient.post<EmployeeDocumentResponse>(
       `${employeeBase(wsId, deptId, employeeId)}`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
   },
 
@@ -107,7 +106,6 @@ export const employeeDocumentService = {
     return apiClient.put<EmployeeDocumentResponse>(
       `${employeeBase(wsId, deptId, employeeId)}/${documentId}`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
   },
 

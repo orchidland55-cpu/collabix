@@ -9,6 +9,7 @@ import com.trio.backend.common.ApiError;
 import com.trio.backend.common.ApiResponse;
 import com.trio.backend.reporting.ReportException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -184,6 +186,15 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.failure("Invalid parameter: " + ex.getName()));
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            NoResourceFoundException ex
+    ) {
+        log.debug("No handler/resource found for {}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.failure("Resource not found."));
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(
             ObjectOptimisticLockingFailureException ex
@@ -191,6 +202,32 @@ public class GlobalExceptionHandler {
         log.warn("Optimistic locking failure: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.failure("Concurrent update detected. Please retry."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex
+    ) {
+        if (containsConstraint(ex, "uk_projects_department_id_name")) {
+            log.debug("Project name uniqueness constraint violation: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.failure("Project with this name already exists."));
+        }
+        log.error("Data integrity violation occurred", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.failure("An unexpected error occurred."));
+    }
+
+    private boolean containsConstraint(Throwable ex, String constraintName) {
+        Throwable current = ex;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains(constraintName.toLowerCase())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @ExceptionHandler(Exception.class)

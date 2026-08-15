@@ -35,7 +35,7 @@ public class ActivityController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_CREATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_CREATE')")
     @Operation(
             summary = "Create a activity",
             security = @SecurityRequirement(name = "bearer"),
@@ -66,7 +66,7 @@ public class ActivityController {
     }
 
     @GetMapping("/{activityId}")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_READ')")
     @Operation(
             summary = "Resorteve a activity",
             security = @SecurityRequirement(name = "bearer"),
@@ -92,7 +92,7 @@ public class ActivityController {
     }
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_READ')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_READ')")
     @Operation(
             summary = "List activities of a task",
             security = @SecurityRequirement(name = "bearer"),
@@ -117,7 +117,7 @@ public class ActivityController {
     }
 
     @PutMapping("/{activityId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_UPDATE')")
+    @PreAuthorize("@departmentAuth.canManageDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_UPDATE')")
     @Operation(
             summary = "Update a activity",
             security = @SecurityRequirement(name = "bearer"),
@@ -145,7 +145,7 @@ public class ActivityController {
 
     @DeleteMapping("/{activityId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_DELETE')")
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ACTIVITY_DELETE')")
     @Operation(
             summary = "Delete a activity",
             security = @SecurityRequirement(name = "bearer"),

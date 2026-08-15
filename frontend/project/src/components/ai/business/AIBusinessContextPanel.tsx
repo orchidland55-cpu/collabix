@@ -1,17 +1,118 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/cn';
 import { Button } from '../../ui/Button';
-import { type ContextOption } from './AIBusinessTypes';
+import type { AIScopeSelection, AIScopeType } from '../../../hooks/useAIScopeSelectors';
 
-interface AIBusinessContextPanelProps {
-  options: ContextOption[];
-  onAnalyze: () => void;
-  analyzeLabel?: string;
-  inputPlaceholder?: string;
+interface ScopeOption {
+  value: string;
+  label: string;
 }
 
-export function AIBusinessContextPanel({ options, onAnalyze, analyzeLabel = 'Analyze', inputPlaceholder }: AIBusinessContextPanelProps) {
+interface SelectField {
+  id: string;
+  label: string;
+  placeholder: string;
+  options: ScopeOption[];
+  value: string;
+  onChange: (value: string) => void;
+  hidden?: boolean;
+}
+
+interface AIBusinessContextPanelProps {
+  scopeOptions: ScopeOption[];
+  departments: { id: string; name: string }[];
+  projects: { id: string; name: string }[];
+  teams: { id: string; name: string }[];
+  defaultScope: AIScopeType;
+  defaultDepartmentId?: string;
+  onAnalyze: (selection: AIScopeSelection, question: string) => void;
+  analyzeLabel?: string;
+  inputPlaceholder?: string;
+  showScopeSelectors?: boolean;
+}
+
+export function AIBusinessContextPanel({
+  scopeOptions,
+  departments,
+  projects,
+  teams,
+  defaultScope,
+  defaultDepartmentId,
+  onAnalyze,
+  analyzeLabel = 'Analyze',
+  inputPlaceholder,
+  showScopeSelectors = true,
+}: AIBusinessContextPanelProps) {
   const [open, setOpen] = useState(true);
+  const [scope, setScope] = useState<AIScopeType>(defaultScope);
+  const [departmentId, setDepartmentId] = useState(defaultDepartmentId ?? '');
+  const [projectId, setProjectId] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [question, setQuestion] = useState('');
+
+  useEffect(() => {
+    setScope(defaultScope);
+  }, [defaultScope]);
+
+  useEffect(() => {
+    if (defaultDepartmentId) setDepartmentId(defaultDepartmentId);
+  }, [defaultDepartmentId]);
+
+  useEffect(() => {
+    setProjectId('');
+    setTeamId('');
+  }, [departmentId, scope]);
+
+  const fields: SelectField[] = [
+    {
+      id: 'scope',
+      label: 'Scope',
+      placeholder: 'Select scope...',
+      options: scopeOptions,
+      value: scope,
+      onChange: (v) => setScope(v as AIScopeType),
+      hidden: !showScopeSelectors || scopeOptions.length === 0,
+    },
+    {
+      id: 'department',
+      label: 'Department',
+      placeholder: 'Select department...',
+      options: departments.map((d) => ({ value: d.id, label: d.name })),
+      value: departmentId,
+      onChange: setDepartmentId,
+      hidden: !showScopeSelectors || scope === 'WORKSPACE' || departments.length === 0,
+    },
+    {
+      id: 'project',
+      label: 'Project',
+      placeholder: 'Select project...',
+      options: projects.map((p) => ({ value: p.id, label: p.name })),
+      value: projectId,
+      onChange: setProjectId,
+      hidden: !showScopeSelectors || scope !== 'PROJECT',
+    },
+    {
+      id: 'team',
+      label: 'Team',
+      placeholder: 'Select team...',
+      options: teams.map((t) => ({ value: t.id, label: t.name })),
+      value: teamId,
+      onChange: setTeamId,
+      hidden: !showScopeSelectors || scope !== 'TEAM',
+    },
+  ];
+
+  function handleSubmit() {
+    onAnalyze(
+      {
+        scope,
+        departmentId: scope === 'WORKSPACE' ? undefined : departmentId || undefined,
+        projectId: scope === 'PROJECT' ? projectId || undefined : undefined,
+        teamId: scope === 'TEAM' ? teamId || undefined : undefined,
+      },
+      question.trim(),
+    );
+  }
 
   return (
     <div className={cn('rounded-xl border border-border-subtle bg-elevated dark:bg-surface overflow-hidden transition-all')}>
@@ -30,17 +131,19 @@ export function AIBusinessContextPanel({ options, onAnalyze, analyzeLabel = 'Ana
       </button>
       {open && (
         <div className="p-5 space-y-4">
-          {options.map((opt) => (
-            <div key={opt.id}>
-              <label className="block text-2xs font-medium text-text-tertiary mb-1.5">{opt.label}</label>
+          {fields.filter((f) => !f.hidden).map((field) => (
+            <div key={field.id}>
+              <label className="block text-2xs font-medium text-text-tertiary mb-1.5">{field.label}</label>
               <select
-                aria-label={opt.label}
+                aria-label={field.label}
+                value={field.value}
+                onChange={(e) => field.onChange(e.target.value)}
                 className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-caption text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-colors appearance-none"
               >
-                <option value="">{opt.placeholder}</option>
-                <option value="1">Option 1</option>
-                <option value="2">Option 2</option>
-                <option value="3">Option 3</option>
+                <option value="">{field.placeholder}</option>
+                {field.options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           ))}
@@ -49,6 +152,8 @@ export function AIBusinessContextPanel({ options, onAnalyze, analyzeLabel = 'Ana
             <div>
               <label className="block text-2xs font-medium text-text-tertiary mb-1.5">Question</label>
               <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
                 placeholder={inputPlaceholder}
                 rows={3}
                 className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-caption text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-colors resize-none"
@@ -56,7 +161,7 @@ export function AIBusinessContextPanel({ options, onAnalyze, analyzeLabel = 'Ana
             </div>
           )}
 
-          <Button fullWidth onClick={onAnalyze}>{analyzeLabel}</Button>
+          <Button fullWidth onClick={handleSubmit}>{analyzeLabel}</Button>
         </div>
       )}
     </div>

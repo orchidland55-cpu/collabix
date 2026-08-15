@@ -15,6 +15,7 @@ import {
   X,
   Trash2,
   ListChecks,
+  ShieldBan,
 } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -46,6 +47,11 @@ import {
   useCreateChecklistItem,
   useUpdateChecklistItem,
   useDeleteChecklistItem,
+  useTaskDepartmentContext,
+  getTaskQueryErrorState,
+  useTaskAccess,
+  useDepartmentMembers,
+  canDragTask,
 } from '../../services/task-hooks';
 import {
   mapTaskResponse,
@@ -56,7 +62,8 @@ import {
   FRONTEND_STATUS_MAP,
 } from './tasks-types';
 import type { Task, TaskStatus, TaskPriority } from './tasks-types';
-import { TaskModal, type TaskModalKind } from './TaskModals';
+import { TaskModal, type TaskModalKind, type EditTaskFormData } from './TaskModals';
+import { useAuth } from '../../lib/auth-context';
 
 const statusColor: Record<string, Tone> = {
   todo: 'info',
@@ -104,6 +111,19 @@ interface TaskDetailsPageProps {
 }
 
 export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', projectId = '', onBack }: TaskDetailsPageProps) {
+  const {
+    workspaceId: contextWsId,
+    departmentId: contextDeptId,
+    canSelectDepartment,
+    isScopedUser,
+    hasAssignedDepartment,
+    isLoading: contextLoading,
+  } = useTaskDepartmentContext();
+
+  const effectiveWsId = workspaceId || contextWsId;
+  const effectiveDeptId = canSelectDepartment ? departmentId : (contextDeptId ?? departmentId);
+  const effectiveProjId = projectId;
+
   const [activeTab, setActiveTab] = useState('overview');
   const [commentText, setCommentText] = useState('');
   const [newChecklistTitle, setNewChecklistTitle] = useState('');
@@ -111,28 +131,38 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
   const [editingItem, setEditingItem] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<TaskModalKind>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const { data: taskData, isLoading: taskLoading, isError: taskError } = useTaskDetail(workspaceId, departmentId, projectId, taskId);
-  const { data: commentsPage } = useCommentsList(workspaceId, departmentId, projectId, taskId);
-  const { data: attachmentsPage } = useAttachmentsList(workspaceId, departmentId, projectId, taskId);
-  const { data: activitiesPage } = useActivitiesList(workspaceId, departmentId, projectId, taskId);
-  const { data: checklistsData } = useChecklistsList(workspaceId, departmentId, projectId, taskId);
+  const { data: taskData, isLoading: taskLoading, isError: taskError, error: taskFetchError } = useTaskDetail(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const { data: commentsPage } = useCommentsList(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const { data: attachmentsPage } = useAttachmentsList(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const { data: activitiesPage } = useActivitiesList(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const { data: checklistsData } = useChecklistsList(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
 
-  const updateTask = useUpdateTask(workspaceId, departmentId, projectId);
-  const updateStatus = useUpdateTaskStatus(workspaceId, departmentId, projectId);
-  const deleteTask = useDeleteTask(workspaceId, departmentId, projectId);
-  const createComment = useCreateComment(workspaceId, departmentId, projectId, taskId);
-  const deleteComment = useDeleteComment(workspaceId, departmentId, projectId, taskId);
-  const createChecklist = useCreateChecklist(workspaceId, departmentId, projectId, taskId);
-  const deleteChecklist = useDeleteChecklist(workspaceId, departmentId, projectId, taskId);
-  const createItem = useCreateChecklistItem(workspaceId, departmentId, projectId, taskId);
-  const updateItem = useUpdateChecklistItem(workspaceId, departmentId, projectId, taskId);
-  const deleteItem = useDeleteChecklistItem(workspaceId, departmentId, projectId, taskId);
+  const updateTask = useUpdateTask(effectiveWsId, effectiveDeptId);
+  const updateStatus = useUpdateTaskStatus(effectiveWsId, effectiveDeptId, effectiveProjId);
+  const deleteTask = useDeleteTask(effectiveWsId, effectiveDeptId);
+  const createComment = useCreateComment(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const deleteComment = useDeleteComment(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const createChecklist = useCreateChecklist(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const deleteChecklist = useDeleteChecklist(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const createItem = useCreateChecklistItem(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const updateItem = useUpdateChecklistItem(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+  const deleteItem = useDeleteChecklistItem(effectiveWsId, effectiveDeptId, effectiveProjId, taskId);
+
+  const { canUpdate, canDelete, canAssign } = useTaskAccess(effectiveWsId || undefined);
+  const { data: departmentMembers } = useDepartmentMembers(
+    canAssign ? effectiveWsId || undefined : undefined,
+    canAssign ? effectiveDeptId || undefined : undefined,
+  );
+  const canManageTasks = canAssign;
 
   const task: Task | null = useMemo(() => {
     if (!taskData) return null;
     return mapTaskResponse(taskData);
   }, [taskData]);
+
+  const canUpdateWorkflowStatus = !!task && canDragTask(task, user?.id, canManageTasks);
 
   const comments = useMemo(() => {
     if (!commentsPage?.content) return [];
@@ -205,6 +235,25 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
     });
   };
 
+  if (contextLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-96 rounded-lg" />
+      </div>
+    );
+  }
+
+  if (isScopedUser && !hasAssignedDepartment) {
+    return (
+      <EmptyState
+        icon={<AlertCircle />}
+        title="No department assigned"
+        description="No department is assigned to your account."
+      />
+    );
+  }
+
   if (taskLoading) {
     return (
       <div className="flex flex-col gap-6">
@@ -216,46 +265,80 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
   }
 
   if (taskError || !task) {
+    const errState = getTaskQueryErrorState(taskFetchError, isScopedUser);
     return (
       <EmptyState
-        icon={<AlertCircle />}
-        title="Task not found"
-        description="The task could not be loaded. It may have been deleted or you may not have access."
+        icon={errState.isAccessDenied ? <ShieldBan /> : <AlertCircle />}
+        title={errState.title}
+        description={errState.description}
       />
     );
   }
 
   const detailActionItems: DropdownItem[] = [
-    { label: 'Edit', icon: <Edit2 className="h-4 w-4" />, onClick: () => setModal({ kind: 'edit', task: { id: task.id, title: task.title, description: task.description } }) },
-    { divider: true, label: 'Danger zone' },
-    { label: 'Archive', icon: <Archive className="h-4 w-4" />, onClick: () => setModal({ kind: 'archive', task: { id: task.id, title: task.title } }) },
-    { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => setModal({ kind: 'delete', task: { id: task.id, title: task.title } }) },
+    ...(canAssign ? [{ label: task.assigneeId ? 'Reassign member' : 'Assign member', icon: <Users className="h-4 w-4" />, onClick: () => setModal({ kind: 'assign', task: { id: task.id, title: task.title, projectId: task.projectId, assigneeId: task.assigneeId } }) }] : []),
+    ...(canUpdate ? [{ label: 'Edit task', icon: <Edit2 className="h-4 w-4" />, onClick: () => setModal({ kind: 'edit', task: { id: task.id, title: task.title, description: task.description, priority: task.priority, dueAt: task.dueAt, projectId: task.projectId } }) }] : []),
+    ...(canDelete ? [{ divider: true, label: 'Danger zone' }, { label: 'Delete task', icon: <Trash2 className="h-4 w-4" />, onClick: () => setModal({ kind: 'delete', task: { id: task.id, title: task.title, projectId: task.projectId } }) }] : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <TaskModal state={modal} onClose={() => setModal(null)} onSubmit={(data) => {
-        if (!modal) return;
-        switch (modal.kind) {
-           case 'edit':
-            updateTask.mutate({ taskId: modal.task.id, data: { title: data.title, description: data.description } }, {
-              onSuccess: () => toast({ title: 'Task updated', tone: 'success' }),
-              onError: () => toast({ title: 'Failed to update task', tone: 'danger' }),
-            });
-            break;
-          case 'archive':
-            deleteTask.mutate(modal.task.id, {
-              onSuccess: () => { toast({ title: 'Task archived', tone: 'success' }); if (onBack) onBack(); },
-            });
-            break;
-          case 'delete':
-            deleteTask.mutate(modal.task.id, {
-              onSuccess: () => { toast({ title: 'Task deleted', tone: 'success' }); if (onBack) onBack(); },
-            });
-            break;
-        }
-        setModal(null);
-      }} />
+      <TaskModal
+        state={modal}
+        onClose={() => setModal(null)}
+        onEdit={(data: EditTaskFormData) => {
+          if (!modal || modal.kind !== 'edit') return;
+          updateTask.mutate(
+            { projectId: effectiveProjId, taskId: modal.task.id, data: mapToUpdateRequest(data) },
+            {
+              onSuccess: () => {
+                setModal(null);
+                toast({ title: 'Task updated', tone: 'success' });
+              },
+              onError: (err: unknown) => {
+                const message = typeof err === 'object' && err !== null && 'message' in err
+                  ? String((err as { message: string }).message)
+                  : 'Failed to update task';
+                toast({ title: 'Failed to update task', description: message, tone: 'danger' });
+              },
+            },
+          );
+        }}
+        onAssign={(assigneeId) => {
+          if (!modal || modal.kind !== 'assign') return;
+          updateTask.mutate(
+            { projectId: modal.task.projectId, taskId: modal.task.id, data: { assigneeId } },
+            {
+              onSuccess: () => {
+                setModal(null);
+                toast({ title: 'Task assigned', tone: 'success' });
+              },
+              onError: () => toast({ title: 'Failed to assign task', tone: 'danger' }),
+            },
+          );
+        }}
+        onConfirmAction={() => {
+          if (!modal || modal.kind !== 'delete') return;
+          deleteTask.mutate(
+            { projectId: effectiveProjId, taskId: modal.task.id },
+            {
+              onSuccess: () => {
+                setModal(null);
+                toast({ title: 'Task deleted', tone: 'success' });
+                if (onBack) onBack();
+              },
+              onError: (err: unknown) => {
+                const message = typeof err === 'object' && err !== null && 'message' in err
+                  ? String((err as { message: string }).message)
+                  : 'Failed to delete task';
+                toast({ title: 'Failed to delete task', description: message, tone: 'danger' });
+              },
+            },
+          );
+        }}
+        members={departmentMembers ?? []}
+        isSubmitting={updateTask.isPending || deleteTask.isPending}
+      />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -274,7 +357,9 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
                 {task.priority}
               </Badge>
             </div>
-            <p className="text-body text-text-secondary mt-1">{task.projectName}</p>
+            <p className="text-body text-text-secondary mt-1">
+              {task.projectName || 'No project'}{task.departmentName ? ` · ${task.departmentName}` : ''}
+            </p>
           </div>
         </div>
 
@@ -306,7 +391,8 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
                   <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border-subtle">
                     <InfoRow icon={<Calendar />} label="Created" value={task.createdAt} />
                     <InfoRow icon={<Clock />} label="Deadline" value={task.deadline || 'No deadline'} />
-                    {task.assigneeName && <InfoRow icon={<Users />} label="Assignee" value={task.assigneeName} />}
+                    <InfoRow icon={<Users />} label="Assignee" value={task.assigneeName || 'Unassigned'} />
+                    {task.departmentName && <InfoRow icon={<FileText />} label="Department" value={task.departmentName} />}
                     {task.startDate && <InfoRow icon={<Clock />} label="Start Date" value={task.startDate} />}
                   </div>
                 </CardBody>
@@ -471,11 +557,18 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
                     <Badge tone={statusColor[task.status]} variant="soft" dot>{statusLabels[task.status]}</Badge>
                   }
                   align="right"
-                  items={statusOptions.map((o) => ({
+                  items={canUpdateWorkflowStatus ? statusOptions.map((o) => ({
                     label: o.label,
                     disabled: o.value === task.status,
-                    onClick: () => updateStatus.mutate({ taskId: task.id, status: FRONTEND_STATUS_MAP[o.value] }),
-                  }))}
+                    onClick: () => updateStatus.mutate({
+                      taskId: task.id,
+                      projectId: task.projectId,
+                      status: FRONTEND_STATUS_MAP[o.value],
+                    }, {
+                      onSuccess: () => toast({ title: 'Status updated', tone: 'success' }),
+                      onError: () => toast({ title: 'Failed to update status', tone: 'danger' }),
+                    }),
+                  })) : []}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -485,17 +578,31 @@ export function TaskDetailsPage({ taskId, workspaceId = '', departmentId = '', p
                     <Badge tone={priorityTone(task.priority)} variant="soft">{task.priority}</Badge>
                   }
                   align="right"
-                  items={priorityOptions.map((o) => ({
+                  items={canUpdate ? priorityOptions.map((o) => ({
                     label: o.label,
                     disabled: o.value === task.priority,
-                    onClick: () => updateTask.mutate({ taskId: task.id, data: mapToUpdateRequest({ priority: o.value }) }),
-                  }))}
+                    onClick: () => updateTask.mutate({
+                      projectId: task.projectId,
+                      taskId: task.id,
+                      data: mapToUpdateRequest({ priority: o.value }),
+                    }),
+                  })) : []}
                 />
               </div>
-              {task.assigneeName && (
+              <div className="flex items-center justify-between">
+                <span className="text-caption text-text-tertiary">Assignee</span>
+                <span className="text-caption font-medium text-text-primary">{task.assigneeName || 'Unassigned'}</span>
+              </div>
+              {task.departmentName && (
                 <div className="flex items-center justify-between">
-                  <span className="text-caption text-text-tertiary">Assignee</span>
-                  <span className="text-caption font-medium text-text-primary">{task.assigneeName}</span>
+                  <span className="text-caption text-text-tertiary">Department</span>
+                  <span className="text-caption text-text-primary">{task.departmentName}</span>
+                </div>
+              )}
+              {task.projectName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-caption text-text-tertiary">Project</span>
+                  <span className="text-caption text-text-primary">{task.projectName}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">

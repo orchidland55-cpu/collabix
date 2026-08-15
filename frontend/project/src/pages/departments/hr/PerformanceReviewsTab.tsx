@@ -15,8 +15,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { usePerformanceReviewsList, usePerformanceReviewStats, useCreatePerformanceReview, useSubmitPerformanceReview, useApprovePerformanceReview, useRejectPerformanceReview, useArchivePerformanceReview, useDeletePerformanceReview } from '../../../services/performance-review-hooks';
 import type { CreatePerformanceReviewRequest } from '../../../services/performance-review-service';
 import { useEmployeesList } from '../../../services/employee-hooks';
-import { useUsersList } from '../../../services/admin-hooks';
-import { performanceLevelColor, reviewStatusColor, REVIEW_PERIODS, reviewPeriodLabel, formatEnum } from './hr-constants';
+import { performanceLevelColor, reviewStatusColor, REVIEW_PERIODS, reviewPeriodLabel, formatEnum, isActiveEmployee } from './hr-constants';
 
 const EMPTY_SCORES = {
   objectivesAchieved: 0, technicalSkills: 0, softSkills: 0, punctualityAttendance: 0,
@@ -38,7 +37,6 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
   const { data, isLoading, isError } = usePerformanceReviewsList(wsId, deptId, page);
   const { data: stats } = usePerformanceReviewStats(wsId, deptId);
   const { data: empData } = useEmployeesList(wsId, deptId, 0, 100);
-  const { data: usersData } = useUsersList();
   const createReview = useCreatePerformanceReview(wsId, deptId);
   const submitReview = useSubmitPerformanceReview(wsId, deptId);
   const approveReview = useApprovePerformanceReview(wsId, deptId);
@@ -49,6 +47,7 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
   const reviews = data?.content ?? [];
   const totalPages = data?.page?.totalPages ?? 1;
   const employees = empData?.content ?? [];
+  const activeEmployees = employees.filter((e) => isActiveEmployee(e.employmentStatus));
 
   const filtered = reviews.filter((r) => {
     if (!search) return true;
@@ -64,7 +63,7 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
   const handleCreate = () => {
     createReview.mutate(form, {
       onSuccess: () => { toast({ title: 'Review created', tone: 'success' }); setShowCreate(false); },
-      onError: () => toast({ title: 'Failed to create review', tone: 'danger' }),
+      onError: (err) => toast({ title: 'Failed to create review', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
     });
   };
 
@@ -215,9 +214,9 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
             <Select label="Employee" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-              options={[{ value: '', label: 'Select employee...' }, ...employees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]} />
+              options={[{ value: '', label: 'Select employee...' }, ...activeEmployees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]} />
             <Select label="Reviewer" value={form.reviewerId} onChange={(e) => setForm({ ...form, reviewerId: e.target.value })}
-              options={[{ value: '', label: 'Select reviewer...' }, ...(usersData ?? []).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }))]} />
+              options={[{ value: '', label: 'Select reviewer...' }, ...activeEmployees.filter((e) => e.id !== form.employeeId).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]} />
             <Select label="Period" value={form.reviewPeriod} onChange={(e) => setForm({ ...form, reviewPeriod: e.target.value })}
               options={REVIEW_PERIODS.map((p) => ({ value: p, label: reviewPeriodLabel[p] }))} />
             <Input label="Review Date" type="date" value={form.reviewDate} onChange={(e) => setForm({ ...form, reviewDate: e.target.value })} />

@@ -71,9 +71,10 @@ public class EmployeeDocumentServiceImpl implements EmployeeDocumentService {
         String originalFileName = file.getOriginalFilename();
         String extension = extractExtension(originalFileName);
         validateMimeType(file, extension);
+        String contentType = resolveContentType(file, extension);
 
         byte[] content = getFileBytes(file);
-        String storagePath = storageService.store(content, originalFileName, file.getContentType());
+        String storagePath = storageService.store(content, originalFileName, contentType);
 
         EmployeeDocument document = EmployeeDocument.builder()
                 .employee(employee)
@@ -81,7 +82,7 @@ public class EmployeeDocumentServiceImpl implements EmployeeDocumentService {
                 .title(title != null ? title : originalFileName)
                 .originalFileName(originalFileName)
                 .storedFileName(storagePath)
-                .mimeType(file.getContentType())
+                .mimeType(contentType)
                 .fileExtension(extension)
                 .fileSize(file.getSize())
                 .storagePath(storagePath)
@@ -119,15 +120,16 @@ public class EmployeeDocumentServiceImpl implements EmployeeDocumentService {
         String originalFileName = file.getOriginalFilename();
         String extension = extractExtension(originalFileName);
         validateMimeType(file, extension);
+        String contentType = resolveContentType(file, extension);
         byte[] content = getFileBytes(file);
-        String storagePath = storageService.store(content, originalFileName, file.getContentType());
+        String storagePath = storageService.store(content, originalFileName, contentType);
 
         EmployeeDocumentType oldType = existing.getDocumentType();
 
         existing.setOriginalFileName(originalFileName);
         existing.setStoredFileName(storagePath);
         existing.setFileExtension(extension);
-        existing.setMimeType(file.getContentType());
+        existing.setMimeType(contentType);
         existing.setFileSize(file.getSize());
         existing.setStoragePath(storagePath);
         existing.setChecksum(null);
@@ -368,6 +370,26 @@ public class EmployeeDocumentServiceImpl implements EmployeeDocumentService {
         } catch (Exception e) {
             throw new BadRequestException("Failed to read uploaded file.");
         }
+    }
+
+    private String resolveContentType(MultipartFile file, String extension) {
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.isBlank() && !"application/octet-stream".equalsIgnoreCase(contentType)) {
+            return contentType;
+        }
+        return switch (extension.toLowerCase()) {
+            case "pdf" -> "application/pdf";
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "txt" -> "text/plain";
+            case "rtf" -> "application/rtf";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            default -> "application/octet-stream";
+        };
     }
 
     private EmployeeDocument findActiveDocument(UUID documentId, UUID employeeId) {

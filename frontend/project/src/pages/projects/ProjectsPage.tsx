@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, Plus, FolderKanban, AlertCircle, Briefcase, Network } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, Plus, FolderKanban, AlertCircle, Briefcase, Network, ShieldBan } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -9,11 +9,17 @@ import { Badge } from '../../components/ui/Badge';
 import { Pagination } from '../../components/ui/Pagination';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
-import { Can } from '../../pages/auth';
-import { useWorkspaceId } from '../../hooks/useWorkspaceId';
 import { useWorkspacesList } from '../../services/workspace-hooks';
 import { useDepartmentList } from '../../services/department-hooks';
-import { useProjectList } from '../../services/project-hooks';
+import {
+  useProjectList,
+  useProjectAccess,
+  useProjectDepartmentContext,
+  getProjectQueryErrorState,
+  getProjectEmptyDescription,
+} from '../../services/project-hooks';
+import { useAuth } from '../../lib/auth-context';
+import { isMember } from '../../lib/access';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import type { ProjectResponse, ProjectPriority } from './projects-types';
 
@@ -31,21 +37,58 @@ const statusColors: Record<string, 'success' | 'neutral'> = {
 
 export function ProjectsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentWsId = useWorkspaceId();
   const wsId = searchParams.get('ws') ?? '';
   const deptId = searchParams.get('dept') ?? '';
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
 
-  const { data: workspaces } = useWorkspacesList();
-  const { data: departments } = useDepartmentList(wsId || undefined);
-  const { data, isLoading, isError, error } = useProjectList(wsId || undefined, deptId || undefined, search || undefined, page);
+  const {
+    workspaceId: contextWsId,
+    departmentId: contextDeptId,
+    departmentName,
+    canSelectDepartment,
+    isScopedUser,
+    hasAssignedDepartment,
+    isLoading: contextLoading,
+  } = useProjectDepartmentContext();
 
-  // If no workspace is in the URL, fall back to the selected workspace context.
-  const effectiveWsId = wsId || currentWsId;
-  const hasContext = !!effectiveWsId && !!deptId;
+  const { data: workspaces } = useWorkspacesList();
+  const effectiveWsId = wsId || contextWsId;
+  const { data: departments } = useDepartmentList(canSelectDepartment ? (effectiveWsId || undefined) : undefined);
+
+  const effectiveDeptId = canSelectDepartment ? deptId : contextDeptId;
+  const { data, isLoading, isError, error } = useProjectList(
+    effectiveWsId || undefined,
+    effectiveDeptId || undefined,
+    search || undefined,
+    page,
+  );
+
+  const { canCreate } = useProjectAccess(effectiveWsId || undefined);
+  const isMemberUser = isMember(user?.roles);
+
+  // Keep URL in sync for scoped users so links and refreshes stay consistent.
+  useEffect(() => {
+    if (contextLoading || canSelectDepartment || !hasAssignedDepartment) return;
+    if (!effectiveWsId || !contextDeptId) return;
+
+    const needsSync = wsId !== effectiveWsId || deptId !== contextDeptId;
+    if (needsSync) {
+      setSearchParams({ ws: effectiveWsId, dept: contextDeptId }, { replace: true });
+    }
+  }, [
+    canSelectDepartment,
+    contextLoading,
+    contextDeptId,
+    deptId,
+    effectiveWsId,
+    hasAssignedDepartment,
+    setSearchParams,
+    wsId,
+  ]);
 
   const handleSelectWs = (ws: string) => {
     if (!ws) {
@@ -63,8 +106,49 @@ export function ProjectsPage() {
     setSearchParams({ ws: effectiveWsId, dept });
   };
 
-  // Context selector fallback when workspace/department not provided in URL.
-  if (!hasContext) {
+  const selectedDepartmentName = canSelectDepartment
+    ? departments?.find((d) => d.id === effectiveDeptId)?.name
+    : departmentName;
+
+  const hasContext = !!effectiveWsId && !!effectiveDeptId;
+  const pageTitle = isScopedUser && selectedDepartmentName
+    ? `${selectedDepartmentName} Projects`
+    : 'Projects';
+
+  if (contextLoading) {
+    return (
+      <div className="flex flex-col gap-6 animate-fade-in">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-4 w-64" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isScopedUser && !hasAssignedDepartment) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-page font-semibold text-text-primary">Projects</h1>
+        </div>
+        <Card>
+          <CardBody className="py-16">
+            <EmptyState
+              icon={<AlertCircle className="h-6 w-6" />}
+              title="No department assigned"
+              description="No department is assigned to your account. Contact your administrator to get access to projects."
+            />
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
+
+  if (canSelectDepartment && !hasContext) {
     return (
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1.5">
@@ -133,14 +217,21 @@ export function ProjectsPage() {
   }
 
   if (isError) {
+    const errorState = getProjectQueryErrorState(error, isScopedUser);
     return (
       <Card>
         <CardBody className="py-16">
           <EmptyState
-            icon={<AlertCircle className="h-6 w-6" />}
-            title="Failed to load projects"
-            description={error instanceof Error ? error.message : 'An unexpected error occurred.'}
-            action={<Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>}
+            icon={errorState.isAccessDenied ? <ShieldBan className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
+            title={errorState.title}
+            description={errorState.description}
+            action={
+              errorState.isAccessDenied ? (
+                <Button variant="outline" onClick={() => navigate('/app/projects')}>Back to Projects</Button>
+              ) : (
+                <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
+              )
+            }
           />
         </CardBody>
       </Card>
@@ -153,8 +244,26 @@ export function ProjectsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
-        <h1 className="text-page font-semibold text-text-primary">Projects</h1>
-        <p className="text-body text-text-secondary">Manage projects across your departments.</p>
+        <h1 className="text-page font-semibold text-text-primary">{pageTitle}</h1>
+        <p className="text-body text-text-secondary">
+          {canSelectDepartment
+            ? 'Manage projects across your departments.'
+            : 'Projects in your department.'}
+        </p>
+        {isScopedUser && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {workspaces && workspaces.length > 1 && effectiveWsId && (
+              <Badge tone="neutral" variant="soft">
+                Workspace: {workspaces.find((w) => w.id === effectiveWsId)?.name ?? effectiveWsId}
+              </Badge>
+            )}
+            {selectedDepartmentName && (
+              <Badge tone="accent" variant="soft">
+                Department: {selectedDepartmentName}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -167,9 +276,9 @@ export function ProjectsPage() {
             containerClassName="w-full sm:max-w-xs"
           />
         </div>
-        <Can permission="PROJECT_CREATE">
+        {canCreate && (
           <Button leftIcon={<Plus />} onClick={() => setShowCreate(true)}>Create Project</Button>
-        </Can>
+        )}
       </div>
 
       {projects.length === 0 ? (
@@ -178,11 +287,9 @@ export function ProjectsPage() {
             <EmptyState
               icon={<FolderKanban className="h-6 w-6" />}
               title="No projects found"
-              description={search ? 'No projects match your search.' : 'No projects yet. Create your first project to get started.'}
-              action={!search ? (
-                <Can permission="PROJECT_CREATE">
-                  <Button leftIcon={<Plus />} onClick={() => setShowCreate(true)}>Create Project</Button>
-                </Can>
+              description={getProjectEmptyDescription(isScopedUser, isMemberUser, !!search)}
+              action={!search && canCreate ? (
+                <Button leftIcon={<Plus />} onClick={() => setShowCreate(true)}>Create Project</Button>
               ) : undefined}
             />
           </CardBody>
@@ -191,7 +298,11 @@ export function ProjectsPage() {
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} onClick={() => navigate(`/app/projects/${project.id}?ws=${wsId}&dept=${deptId}`)} />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onClick={() => navigate(`/app/projects/${project.id}?ws=${effectiveWsId}&dept=${effectiveDeptId}`)}
+              />
             ))}
           </div>
           {totalPages > 1 && (
@@ -200,8 +311,15 @@ export function ProjectsPage() {
         </>
       )}
 
-      {showCreate && wsId && deptId && (
-        <CreateProjectModal open={showCreate} onClose={() => setShowCreate(false)} wsId={wsId} deptId={deptId} />
+      {showCreate && effectiveWsId && effectiveDeptId && (
+        <CreateProjectModal
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          wsId={effectiveWsId}
+          deptId={effectiveDeptId}
+          departmentName={selectedDepartmentName}
+          departmentLocked={isScopedUser}
+        />
       )}
     </div>
   );

@@ -8,6 +8,7 @@ import com.trio.backend.dto.hr.InterviewParticipantResponse;
 import com.trio.backend.dto.hr.InterviewResponse;
 import com.trio.backend.dto.hr.InterviewStatistics;
 import com.trio.backend.dto.hr.UpdateInterviewRequest;
+import com.trio.backend.dto.hr.UpdateInterviewNotesRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -23,6 +24,8 @@ public interface InterviewService {
     Page<InterviewResponse> listByCandidate(UUID workspaceId, UUID departmentId, UUID candidateId, Pageable pageable);
 
     InterviewResponse update(UUID workspaceId, UUID departmentId, UUID candidateId, UUID interviewId, UpdateInterviewRequest request);
+
+    InterviewResponse updateNotes(UUID workspaceId, UUID departmentId, UUID candidateId, UUID interviewId, UpdateInterviewNotesRequest request);
 
     void cancel(UUID workspaceId, UUID departmentId, UUID candidateId, UUID interviewId);
 

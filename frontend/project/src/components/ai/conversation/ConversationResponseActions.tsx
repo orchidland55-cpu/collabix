@@ -65,7 +65,7 @@ export function ConversationResponseActions({
       >
         <Bookmark className={cn('h-3.5 w-3.5', bookmarked && 'fill-accent-500 text-accent-500')} />
       </IconButton>
-      <IconButton size="sm" label="Share (coming soon)" onClick={() => {}}>
+      <IconButton size="sm" label="Share" disabled onClick={() => {}}>
         <Share2 className="h-3.5 w-3.5" />
       </IconButton>
       {isLastMessage && (

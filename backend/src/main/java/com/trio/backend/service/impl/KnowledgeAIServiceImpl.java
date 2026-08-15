@@ -18,6 +18,7 @@ import com.trio.backend.repository.DocumentRepository;
 import com.trio.backend.repository.KnowledgeBaseRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
+import com.trio.backend.security.ai.AIScopeAuthorization;
 import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.service.KnowledgeAIService;
 import com.trio.backend.service.KnowledgeDataCollector;
@@ -48,11 +49,12 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
+    private final AIScopeAuthorization aiScopeAuthorization;
 
     @Override
     public KnowledgeAIResponse ask(UUID workspaceId, UUID departmentId, UUID projectId, String question) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
+        aiScopeAuthorization.assertCanAccessKnowledge(workspaceId, departmentId, projectId);
 
         Map<String, Object> collectedData = knowledgeDataCollector.collect(
                 workspaceId, departmentId, projectId, question);
@@ -96,7 +98,7 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
     @Transactional(readOnly = true)
     public List<KnowledgeSource> search(UUID workspaceId, UUID departmentId, UUID projectId, String query) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
+        aiScopeAuthorization.assertCanAccessKnowledge(workspaceId, departmentId, projectId);
 
         List<KnowledgeSource> results = new ArrayList<>();
 
@@ -109,6 +111,9 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
                     workspaceId, query, PageRequest.of(0, 20)).getContent();
         }
         for (Document doc : documents) {
+            if (departmentId != null && !doc.getProject().getDepartment().getId().equals(departmentId)) {
+                continue;
+            }
             results.add(KnowledgeSource.builder()
                     .id(doc.getId())
                     .title(doc.getTitle())
@@ -131,6 +136,9 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
                     workspaceId, query, PageRequest.of(0, 20)).getContent();
         }
         for (KnowledgeBase kb : articles) {
+            if (departmentId != null && !kb.getProject().getDepartment().getId().equals(departmentId)) {
+                continue;
+            }
             results.add(KnowledgeSource.builder()
                     .id(kb.getId())
                     .title(kb.getTitle())
@@ -151,10 +159,13 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
     @Transactional(readOnly = true)
     public Page<?> getHistory(UUID workspaceId, int page, int size) {
         UUID userId = getAuthenticatedUserId();
-        assertActiveWorkspaceMember(workspaceId, userId);
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
 
-        return aiHistoryRepository.findByWorkspacePaginated(
-                workspaceId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        return aiScopeAuthorization.resolveReadableDepartmentFilter(workspaceId)
+                .map(deptId -> aiHistoryRepository.findByWorkspaceAndDepartmentPaginated(
+                        workspaceId, deptId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))
+                .orElseGet(() -> aiHistoryRepository.findByWorkspacePaginated(
+                        workspaceId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))));
     }
 
     private List<KnowledgeSource> buildSources(Map<String, Object> collectedData) {

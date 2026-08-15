@@ -1,26 +1,36 @@
-import { useState } from 'react';
-import { FileText, Plus, X, Loader2, Check, Download, ShieldCheck, CalendarClock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FileText, Plus, X, Loader2, Check, Download, ShieldCheck, CalendarClock, Upload } from 'lucide-react';
 import { Card, CardBody } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { Textarea } from '../../../components/ui/Textarea';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { IconButton } from '../../../components/ui/IconButton';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Modal } from '../../../components/ui/Modal';
 import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../auth';
 import { useEmployeesList } from '../../../services/employee-hooks';
 import { useEmployeeDocuments, useEmployeeDocumentStats, useExpiringDocuments, useUploadEmployeeDocument, useVerifyEmployeeDocument, useUnverifyEmployeeDocument, useDeleteEmployeeDocument } from '../../../services/employee-document-hooks';
 import type { EmployeeDocumentType } from '../../../services/employee-document-service';
+import { employeeDocumentService } from '../../../services/employee-document-service';
+import { DocumentViewerModal } from '../../../components/documents/DocumentViewerModal';
+import { downloadAuthenticatedFile } from '../../../lib/file-download';
+import { getUploadErrorMessage, logUploadError } from '../../../lib/upload-error';
 import { EMPLOYEE_DOCUMENT_TYPES, employeeDocumentTypeLabel } from './hr-constants';
 
 export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string }) {
   const [selectedEmp, setSelectedEmp] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [type, setType] = useState<EmployeeDocumentType>('CONTRACT');
+  const [type, setType] = useState<EmployeeDocumentType>('RESUME');
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ doc: { id: string; originalFileName: string; mimeType: string; title?: string } } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
   const { data: empData } = useEmployeesList(wsId, deptId, 0, 100);
@@ -41,24 +51,63 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
     return e ? `${e.firstName} ${e.lastName}` : 'Employee';
   };
 
-  const handleUpload = () => {
-    if (!selectedEmp || !file) return;
-    uploadDoc.mutate({ file, documentType: type, title: title || undefined, expirationDate: expirationDate || undefined }, {
-      onSuccess: () => {
-        toast({ title: 'Document uploaded', tone: 'success' });
-        setShowForm(false);
-        setType('CONTRACT');
-        setTitle('');
-        setExpirationDate('');
-        setFile(null);
-      },
-      onError: () => toast({ title: 'Failed to upload document', tone: 'danger' }),
-    });
+  useEffect(() => {
+    if (!showForm) return;
+    setType('RESUME');
+    setTitle('');
+    setDescription('');
+    setExpirationDate('');
+    setFile(null);
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [showForm]);
+
+  const resetUploadForm = () => {
+    setShowForm(false);
+    setType('RESUME');
+    setTitle('');
+    setDescription('');
+    setExpirationDate('');
+    setFile(null);
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const downloadUrl = selectedEmp
-    ? `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/workspaces/${wsId}/departments/${deptId}/employees/${selectedEmp}/documents/`
-    : '';
+  const handleUpload = () => {
+    if (!selectedEmp || !file) {
+      setUploadError('Please select a file to upload.');
+      return;
+    }
+    setUploadError(null);
+    uploadDoc.mutate(
+      {
+        file,
+        documentType: type,
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+        expirationDate: expirationDate.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast({ title: 'Document uploaded', tone: 'success' });
+          resetUploadForm();
+        },
+        onError: (error) => {
+          logUploadError('employee-document', error);
+          setUploadError(getUploadErrorMessage(error));
+        },
+      },
+    );
+  };
+
+  const handleDownload = (docId: string, fileName: string) => {
+    if (!selectedEmp) return;
+    downloadAuthenticatedFile(employeeDocumentService.downloadUrl(wsId, deptId, selectedEmp, docId), fileName)
+      .catch(() => toast({ title: 'Failed to download document', tone: 'danger' }));
+  };
+
+  const viewerUrl = (docId: string) =>
+    selectedEmp ? employeeDocumentService.downloadUrl(wsId, deptId, selectedEmp, docId) : '';
 
   return (
     <div className="flex flex-col gap-4">
@@ -124,29 +173,65 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
         </div>
       )}
 
-      {showForm && selectedEmp && (
-        <Card>
-          <CardBody className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-body font-semibold text-text-primary">Upload Document</h3>
-              <IconButton label="Close" variant="ghost" onClick={() => setShowForm(false)}><X className="h-4 w-4" /></IconButton>
-            </div>
-            <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-caption" />
-            <div className="grid grid-cols-2 gap-3">
-              <Select value={type} onChange={(e) => setType(e.target.value as EmployeeDocumentType)}
-                options={EMPLOYEE_DOCUMENT_TYPES.map((t) => ({ value: t, label: employeeDocumentTypeLabel[t] ?? t }))} />
-              <Input placeholder="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} />
-              <div className="col-span-2">
-                <Input placeholder="Expiration date (YYYY-MM-DD, optional)" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} />
+      <Modal
+        open={showForm && !!selectedEmp}
+        onClose={resetUploadForm}
+        title="Upload Document"
+        description={selectedEmp ? `Upload a document for ${empName(selectedEmp)}.` : undefined}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={resetUploadForm}>Cancel</Button>
+            <Button
+              onClick={handleUpload}
+              disabled={!file || uploadDoc.isPending}
+              leftIcon={uploadDoc.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            >
+              {uploadDoc.isPending ? 'Uploading...' : 'Upload'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="mb-1.5 block text-caption font-medium text-text-secondary">File *</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt,.rtf"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null);
+                setUploadError(null);
+              }}
+              className="block w-full text-caption text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-accent-50 file:px-3 file:py-1.5 file:text-caption file:font-medium file:text-accent-700 dark:file:bg-accent-100/10 dark:file:text-accent-400"
+            />
+            {file && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
+                <FileText className="h-4 w-4 shrink-0 text-text-tertiary" />
+                <div className="min-w-0 flex-1 truncate text-caption text-text-primary">{file.name}</div>
+                <div className="shrink-0 text-2xs text-text-tertiary">{formatBytes(file.size)}</div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!file}>Upload</Button>
-            </div>
-          </CardBody>
-        </Card>
-      )}
+            )}
+          </div>
+          <Input label="Title" placeholder="Optional document title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Textarea label="Description" placeholder="Optional description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Category"
+              value={type}
+              onChange={(e) => setType(e.target.value as EmployeeDocumentType)}
+              options={EMPLOYEE_DOCUMENT_TYPES.map((t) => ({ value: t, label: employeeDocumentTypeLabel[t] ?? t }))}
+            />
+            <Input
+              label="Expiration date"
+              placeholder="YYYY-MM-DD (optional)"
+              value={expirationDate}
+              onChange={(e) => setExpirationDate(e.target.value)}
+            />
+          </div>
+          {uploadError && <p className="text-caption text-danger-600">{uploadError}</p>}
+        </div>
+      </Modal>
 
       {selectedEmp && !showForm && (
         isLoading ? (
@@ -156,7 +241,9 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
         ) : (
           <div className="space-y-2">
             {docs.map((d) => (
-              <div key={d.id} className="flex items-center gap-4 p-4 rounded-lg border border-border-subtle bg-surface hover:bg-surface-2 transition-colors">
+              <div key={d.id}
+                className="flex items-center gap-4 p-4 rounded-lg border border-border-subtle bg-surface hover:bg-surface-2 transition-colors cursor-pointer"
+                onClick={() => setViewer({ doc: d })}>
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2 text-text-tertiary">
                   <FileText className="h-5 w-5" />
                 </div>
@@ -166,6 +253,7 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
                     {employeeDocumentTypeLabel[d.documentType] ?? d.documentType} • v{d.fileVersion} • {formatBytes(d.fileSize)}
                     {d.expirationDate && ` • Exp: ${d.expirationDate}`}
                   </p>
+                  {d.description && <p className="text-2xs text-text-tertiary truncate mt-0.5">{d.description}</p>}
                 </div>
                 {d.verified ? (
                   <Badge tone="success" variant="soft"><ShieldCheck className="h-3.5 w-3.5 mr-1" /> Verified</Badge>
@@ -173,23 +261,24 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
                   <Badge tone="warning" variant="soft">Unverified</Badge>
                 )}
                 <div className="flex items-center gap-1">
-                  <a href={downloadUrl + d.id + '/download'} target="_blank" rel="noreferrer">
-                    <IconButton label="Download" variant="ghost" size="sm"><Download className="h-4 w-4" /></IconButton>
-                  </a>
+                  <IconButton label="Download" variant="ghost" size="sm"
+                    onClick={(e) => { e.stopPropagation(); handleDownload(d.id, d.originalFileName); }}>
+                    <Download className="h-4 w-4" />
+                  </IconButton>
                   <Can permission="EMPLOYEE_DOCUMENT_VERIFY">
                     {d.verified ? (
-                      <IconButton label="Unverify" variant="ghost" size="sm" onClick={() => unverifyDoc.mutate(d.id)}>
+                      <IconButton label="Unverify" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); unverifyDoc.mutate(d.id); }}>
                         <Check className="h-4 w-4" />
                       </IconButton>
                     ) : (
-                      <IconButton label="Verify" variant="ghost" size="sm" className="text-success-600" onClick={() => verifyDoc.mutate(d.id)}>
+                      <IconButton label="Verify" variant="ghost" size="sm" className="text-success-600" onClick={(e) => { e.stopPropagation(); verifyDoc.mutate(d.id); }}>
                         <ShieldCheck className="h-4 w-4" />
                       </IconButton>
                     )}
                   </Can>
                   <Can permission="EMPLOYEE_DOCUMENT_DELETE">
                     <IconButton label="Delete" variant="ghost" size="sm" className="text-danger-600"
-                      onClick={() => deleteDoc.mutate(d.id, { onSuccess: () => toast({ title: 'Document deleted', tone: 'success' }) })}>
+                      onClick={(e) => { e.stopPropagation(); deleteDoc.mutate(d.id, { onSuccess: () => toast({ title: 'Document deleted', tone: 'success' }) }); }}>
                       <X className="h-4 w-4" />
                     </IconButton>
                   </Can>
@@ -198,6 +287,17 @@ export function DocumentsTab({ wsId, deptId }: { wsId: string; deptId: string })
             ))}
           </div>
         )
+      )}
+
+      {viewer && selectedEmp && (
+        <DocumentViewerModal
+          open
+          onClose={() => setViewer(null)}
+          title={viewer.doc.title || viewer.doc.originalFileName}
+          fileName={viewer.doc.originalFileName}
+          mimeType={viewer.doc.mimeType}
+          url={viewerUrl(viewer.doc.id)}
+        />
       )}
     </div>
   );

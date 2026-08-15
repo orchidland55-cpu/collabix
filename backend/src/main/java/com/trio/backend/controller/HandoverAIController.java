@@ -25,7 +25,7 @@ public class HandoverAIController {
 
     private final HandoverAIService handoverAIService;
 
-    @PreAuthorize("@workspaceAuth.canCreateArtifact(#request.workspaceId, #request.departmentId, #request.projectId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_CREATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#request.workspaceId, authentication) && @departmentAuth.canManageDepartmentProjects(#request.workspaceId, #request.departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_CREATE')")
     @Operation(summary = "Generate an AI handover journal")
     @PostMapping("/generate")
     @ResponseStatus(HttpStatus.CREATED)
@@ -40,7 +40,7 @@ public class HandoverAIController {
         return ApiResponse.success("AI handover journal generated successfully.", response);
     }
 
-    @PreAuthorize("@workspaceAuth.canCreateArtifact(#request.workspaceId, #request.departmentId, #request.projectId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_CREATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#request.workspaceId, authentication) && @departmentAuth.canManageDepartmentProjects(#request.workspaceId, #request.departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_CREATE')")
     @Operation(summary = "Regenerate an existing AI handover journal")
     @PostMapping("/regenerate/{journalId}")
     public ApiResponse<HandoverAIResponse> regenerate(
@@ -57,7 +57,7 @@ public class HandoverAIController {
         return ApiResponse.success("AI handover journal regenerated successfully.", response);
     }
 
-    @PreAuthorize("@workspaceAuth.canCreateArtifact(#editRequest.workspaceId, #editRequest.departmentId, #editRequest.projectId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#editRequest.workspaceId, authentication) && @departmentAuth.canManageDepartmentProjects(#editRequest.workspaceId, #editRequest.departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
     @Operation(summary = "Edit an AI handover journal")
     @PutMapping("/{journalId}")
     public ApiResponse<HandoverAIResponse> edit(
@@ -73,7 +73,7 @@ public class HandoverAIController {
         return ApiResponse.success("AI handover journal updated successfully.", response);
     }
 
-    @PreAuthorize("@workspaceAuth.canCreateArtifact(#request.workspaceId, #request.departmentId, #request.projectId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#request.workspaceId, authentication) && @departmentAuth.canManageDepartmentProjects(#request.workspaceId, #request.departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
     @Operation(summary = "Approve an AI handover journal")
     @PostMapping("/{journalId}/approve")
     public ApiResponse<HandoverAIResponse> approve(
@@ -88,7 +88,7 @@ public class HandoverAIController {
         return ApiResponse.success("AI handover journal approved.", response);
     }
 
-    @PreAuthorize("@workspaceAuth.canCreateArtifact(#request.workspaceId, #request.departmentId, #request.projectId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#request.workspaceId, authentication) && @departmentAuth.canManageDepartmentProjects(#request.workspaceId, #request.departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'HANDOVER_UPDATE')")
     @Operation(summary = "Reject an AI handover journal")
     @PostMapping("/{journalId}/reject")
     public ApiResponse<HandoverAIResponse> reject(

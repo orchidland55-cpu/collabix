@@ -7,10 +7,11 @@ import { AIBusinessResources } from './AIBusinessResources';
 import { AIBusinessEmptyState } from './AIBusinessEmptyState';
 import { AIBusinessLoading } from './AIBusinessLoading';
 import { AIBusinessErrorCard } from './AIBusinessErrorCard';
+import { useAIPermissions } from '../../../hooks/useAIPermissions';
 import { useAIGenerateReport } from '../../../services/reporting-ai-hooks';
 import type { ReportingResponse } from '../../../services/reporting-ai-service';
+import { useAIScopeSelectors, type AIScopeSelection } from '../../../hooks/useAIScopeSelectors';
 import {
-  reportContext,
   reportFollowUps,
   reportResources,
 } from './AIBusinessTypes';
@@ -27,15 +28,21 @@ export function AIReportPage({
   const [error, setError] = useState<string | null>(null);
 
   const generateMutation = useAIGenerateReport();
+  const { canGenerateReports } = useAIPermissions();
+  const scopeSelectors = useAIScopeSelectors(departmentId || undefined);
 
-  async function handleGenerate() {
+  async function handleGenerate(selection: AIScopeSelection, question: string) {
     setError(null);
     try {
+      const title = question.trim() || 'Executive Report';
       const result = await generateMutation.mutateAsync({
         workspaceId,
-        departmentId,
-        title: 'Executive Report',
-        reportType: 'EXECUTIVE_SUMMARY',
+        departmentId: selection.departmentId,
+        projectId: selection.projectId,
+        teamId: selection.teamId,
+        scope: selection.scope,
+        title,
+        reportType: 'EXECUTIVE',
       });
       setResultData(result);
       setHasResult(true);
@@ -44,13 +51,23 @@ export function AIReportPage({
     }
   }
 
+  if (!canGenerateReports) {
+    return (
+      <div className="flex flex-col gap-6">
+        <AIBusinessHeader module="reports" title="Report AI" description="Read executive reports for your department." />
+        <AIBusinessEmptyState module="reports" onAction={() => undefined} />
+        <p className="text-caption text-text-tertiary text-center">Report generation is available to workspace admins and managers.</p>
+      </div>
+    );
+  }
+
   if (generateMutation.isPending) return <AIBusinessLoading />;
 
   if (error) {
     return (
       <div className="flex flex-col gap-6">
         <AIBusinessHeader module="reports" title="Report AI" description="Generate professional executive reports and management summaries." />
-        <AIBusinessErrorCard message={error} onRetry={() => { setError(null); handleGenerate(); }} onDismiss={() => setError(null)} />
+        <AIBusinessErrorCard message={error} onRetry={() => setError(null)} onDismiss={() => setError(null)} />
       </div>
     );
   }
@@ -62,7 +79,12 @@ export function AIReportPage({
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="w-full lg:w-72 shrink-0">
           <AIBusinessContextPanel
-            options={reportContext}
+            scopeOptions={scopeSelectors.scopeOptions}
+            departments={scopeSelectors.departments}
+            projects={scopeSelectors.projects}
+            teams={scopeSelectors.teams}
+            defaultScope={scopeSelectors.defaultScope}
+            defaultDepartmentId={scopeSelectors.defaultDepartmentId}
             onAnalyze={handleGenerate}
             analyzeLabel="Generate Report"
             inputPlaceholder="Describe the report you need..."
@@ -90,7 +112,7 @@ export function AIReportPage({
               <AIBusinessResources resources={reportResources} />
             </>
           ) : (
-            <AIBusinessEmptyState module="reports" onAction={handleGenerate} />
+            <AIBusinessEmptyState module="reports" onAction={() => handleGenerate({ scope: scopeSelectors.defaultScope, departmentId: scopeSelectors.defaultDepartmentId }, '')} />
           )}
         </div>
       </div>

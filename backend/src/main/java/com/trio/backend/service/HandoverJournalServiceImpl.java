@@ -150,8 +150,10 @@ public class HandoverJournalServiceImpl implements HandoverJournalService {
         LocalDateTime from = date == null ? null : date.atStartOfDay();
         LocalDateTime to = date == null ? null : date.atStartOfDay().plusDays(1);
 
-        return handoverJournalRepository.findAccessiblePaginated(
-                        workspaceId, effectiveDepartmentId, projectId, shift, from, to, pageable)
+        return handoverJournalRepository.findAll(
+                        HandoverJournalSpecification.accessibleFilter(
+                                workspaceId, effectiveDepartmentId, projectId, shift, from, to),
+                        pageable)
                 .map(handoverJournalMapper::toResponse);
     }
 

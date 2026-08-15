@@ -211,6 +211,7 @@ export function mapTaskResponse(t: TaskResponse): Task {
     assigneeId: t.assigneeId,
     assigneeName: t.assigneeName,
     startDate: t.startDate ? formatInstant(t.startDate) : undefined,
+    dueAt: t.dueAt,
     createdAt: formatInstant(t.createdAt),
     deadline: t.dueAt ? formatInstant(t.dueAt) : undefined,
     estimatedTime: undefined,
@@ -307,6 +308,27 @@ function formatInstant(instant: string): string {
   }
 }
 
+export function parseDatetimeLocalToInstant(value: string): string | undefined {
+  if (!value.trim()) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
+
+export function isTaskOverdue(task: Pick<Task, 'dueAt' | 'status'>): boolean {
+  if (!task.dueAt || task.status === 'completed' || task.status === 'archived' || task.status === 'cancelled') {
+    return false;
+  }
+  return new Date(task.dueAt).getTime() < Date.now();
+}
+
+export const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'urgent', label: 'Urgent' },
+];
+
 export interface Comment {
   id: string;
   author: string;
@@ -352,6 +374,7 @@ export interface Task {
   assigneeId?: string;
   assigneeName?: string;
   startDate?: string;
+  dueAt?: string;
   createdAt: string;
   deadline?: string;
   estimatedTime?: number;

@@ -42,18 +42,35 @@ export function useCreateDocument(wsId: string, deptId: string, projId: string) 
       documentService.create(wsId, deptId, projId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
 
-export function useUploadDocument(wsId: string, deptId: string, projId: string) {
+export function useUploadDocument(wsId: string, deptId?: string, projId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, taskId, title, description, category, tags }: {
-      file: File; taskId?: string; title?: string; description?: string; category?: string; tags?: string;
-    }) => documentService.upload(wsId, deptId, projId, file, taskId, title, description, category, tags),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+    mutationFn: ({ file, taskId, title, description, category, tags, departmentId, projectId }: {
+      file: File;
+      taskId?: string;
+      title?: string;
+      description?: string;
+      category?: string;
+      tags?: string;
+      departmentId?: string;
+      projectId?: string;
+    }) => {
+      const effectiveDeptId = departmentId ?? deptId ?? '';
+      const effectiveProjId = projectId ?? projId ?? '';
+      return documentService.upload(wsId, effectiveDeptId, effectiveProjId, file, taskId, title, description, category, tags);
+    },
+    onSuccess: (_data, variables) => {
+      const effectiveDeptId = variables.departmentId ?? deptId ?? '';
+      const effectiveProjId = variables.projectId ?? projId ?? '';
+      if (effectiveDeptId && effectiveProjId) {
+        qc.invalidateQueries({ queryKey: docKeys.all(wsId, effectiveDeptId, effectiveProjId) });
+      }
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -77,6 +94,7 @@ export function useDeleteDocument(wsId: string, deptId: string, projId: string) 
       documentService.delete(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -88,6 +106,7 @@ export function useArchiveDocument(wsId: string, deptId: string, projId: string)
       documentService.archive(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -99,6 +118,7 @@ export function useRestoreDocument(wsId: string, deptId: string, projId: string)
       documentService.restore(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -110,6 +130,7 @@ export function useSubmitForApproval(wsId: string, deptId: string, projId: strin
       documentService.submitForApproval(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -121,6 +142,7 @@ export function useApproveDocument(wsId: string, deptId: string, projId: string)
       documentService.approve(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }
@@ -132,6 +154,7 @@ export function useRejectDocument(wsId: string, deptId: string, projId: string) 
       documentService.reject(wsId, deptId, projId, docId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
+      qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
   });
 }

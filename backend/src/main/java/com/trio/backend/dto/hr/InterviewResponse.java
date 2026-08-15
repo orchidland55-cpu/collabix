@@ -18,12 +18,14 @@ public class InterviewResponse {
     private InterviewType type;
     private InterviewStatus status;
     private String title;
+    private String position;
     private String description;
     private Instant scheduledDate;
     private Instant startTime;
     private Instant endTime;
     private String location;
     private String meetingLink;
+    private String notes;
     private boolean archived;
     private List<InterviewParticipantResponse> participants;
     private List<InterviewFeedbackResponse> feedbacks;

@@ -7,11 +7,11 @@ import { AIBusinessResources } from './AIBusinessResources';
 import { AIBusinessEmptyState } from './AIBusinessEmptyState';
 import { AIBusinessLoading } from './AIBusinessLoading';
 import { AIBusinessErrorCard } from './AIBusinessErrorCard';
-import { useAIGenerateHandover } from '../../../services/handover-hooks';
+import { useAIGenerateHandover, useAccessibleHandoverJournals } from '../../../services/handover-hooks';
 import type { HandoverAIResponse } from '../../../services/handover-service';
-
+import { useAIPermissions } from '../../../hooks/useAIPermissions';
+import { useAIScopeSelectors, type AIScopeSelection } from '../../../hooks/useAIScopeSelectors';
 import {
-  handoverContext,
   handoverFollowUps,
   handoverResources,
 } from './AIBusinessTypes';
@@ -30,14 +30,20 @@ export function AIHandoverPage({
   const [error, setError] = useState<string | null>(null);
 
   const generateMutation = useAIGenerateHandover(workspaceId, departmentId, projectId);
+  const { canGenerateHandover, canReadHandover } = useAIPermissions();
+  const { data: accessibleJournals, isLoading: journalsLoading } = useAccessibleHandoverJournals(
+    canReadHandover && !canGenerateHandover ? workspaceId : undefined,
+    { page: 0, size: 10 },
+  );
+  const scopeSelectors = useAIScopeSelectors(departmentId || undefined);
 
-  async function handleAnalyze() {
+  async function handleAnalyze(selection: AIScopeSelection) {
     setError(null);
     try {
       const result = await generateMutation.mutateAsync({
         workspaceId,
-        departmentId,
-        projectId,
+        departmentId: selection.departmentId || departmentId,
+        projectId: selection.projectId || projectId,
       });
       setResultData(result);
       setHasResult(true);
@@ -46,13 +52,63 @@ export function AIHandoverPage({
     }
   }
 
+  if (!canGenerateHandover) {
+    if (!canReadHandover) {
+      return (
+        <div className="flex flex-col gap-6">
+          <AIBusinessHeader module="handover" title="Handover AI" description="Handover information for your workspace." />
+          <p className="text-caption text-text-tertiary text-center">You don&apos;t have permission to access handover information.</p>
+        </div>
+      );
+    }
+
+    const journals = accessibleJournals?.content ?? [];
+
+    return (
+      <div className="flex flex-col gap-6">
+        <AIBusinessHeader
+          module="handover"
+          title="Handover AI"
+          description="Read handover journals for projects you are authorized to access."
+        />
+        {journalsLoading && <AIBusinessLoading />}
+        {!journalsLoading && journals.length === 0 && (
+          <p className="text-caption text-text-tertiary text-center">No handover journals available in your authorized scope.</p>
+        )}
+        {!journalsLoading && journals.length > 0 && (
+          <div className="grid gap-4">
+            {journals.map((journal) => (
+              <div key={journal.id} className="rounded-xl border border-border-subtle bg-surface p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-body font-medium text-text-primary">
+                    {journal.journalDate}
+                    {journal.shift ? ` · ${journal.shift}` : ''}
+                  </p>
+                  <span className="text-2xs text-text-tertiary">{journal.generationStatus}</span>
+                </div>
+                {journal.generatedSummary && (
+                  <p className="text-caption text-text-secondary line-clamp-3">{journal.generatedSummary}</p>
+                )}
+                <div className="grid gap-1 text-2xs text-text-tertiary sm:grid-cols-3">
+                  <span>Done: {journal.completedHandovers ?? 0}</span>
+                  <span>Pending: {journal.pendingHandovers ?? 0}</span>
+                  <span>Blocked: {journal.overdueHandovers ?? 0} overdue</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (generateMutation.isPending) return <AIBusinessLoading />;
 
   if (error) {
     return (
       <div className="flex flex-col gap-6">
         <AIBusinessHeader module="handover" title="Handover AI" description="Review handover journals, detect risks and ensure work continuity." />
-        <AIBusinessErrorCard message={error} onRetry={() => { setError(null); handleAnalyze(); }} onDismiss={() => setError(null)} />
+        <AIBusinessErrorCard message={error} onRetry={() => setError(null)} onDismiss={() => setError(null)} />
       </div>
     );
   }
@@ -64,8 +120,13 @@ export function AIHandoverPage({
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="w-full lg:w-72 shrink-0">
           <AIBusinessContextPanel
-            options={handoverContext}
-            onAnalyze={handleAnalyze}
+            scopeOptions={scopeSelectors.scopeOptions.filter((o) => o.value !== 'TEAM')}
+            departments={scopeSelectors.departments}
+            projects={scopeSelectors.projects}
+            teams={[]}
+            defaultScope={scopeSelectors.defaultScope === 'WORKSPACE' ? 'DEPARTMENT' : scopeSelectors.defaultScope}
+            defaultDepartmentId={scopeSelectors.defaultDepartmentId}
+            onAnalyze={(selection) => handleAnalyze(selection)}
             analyzeLabel="Review Handover"
             inputPlaceholder="Ask about handover details, risks or gaps..."
           />
@@ -91,7 +152,7 @@ export function AIHandoverPage({
               <AIBusinessResources resources={handoverResources} />
             </>
           ) : (
-            <AIBusinessEmptyState module="handover" onAction={handleAnalyze} />
+            <AIBusinessEmptyState module="handover" onAction={() => handleAnalyze({ scope: 'DEPARTMENT', departmentId: scopeSelectors.defaultDepartmentId })} />
           )}
         </div>
       </div>

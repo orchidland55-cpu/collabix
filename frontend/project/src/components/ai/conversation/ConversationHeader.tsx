@@ -153,22 +153,22 @@ export function ConversationHeader({
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => { setSettingsOpen(false); }}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-body text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
+                disabled
+                title="Sharing is not available yet"
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-body text-text-tertiary cursor-not-allowed opacity-60"
               >
                 <Share2 className="h-4 w-4" />
                 Share
-                <span className="ml-auto text-2xs text-text-tertiary">Soon</span>
               </button>
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => { setSettingsOpen(false); }}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-body text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
+                disabled
+                title="Export is not available yet"
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-body text-text-tertiary cursor-not-allowed opacity-60"
               >
                 <Download className="h-4 w-4" />
                 Export
-                <span className="ml-auto text-2xs text-text-tertiary">Soon</span>
               </button>
               <div className="my-1 border-t border-border-subtle" />
               <button

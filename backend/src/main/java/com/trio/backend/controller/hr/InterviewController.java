@@ -8,6 +8,7 @@ import com.trio.backend.dto.hr.InterviewFeedbackResponse;
 import com.trio.backend.dto.hr.InterviewParticipantResponse;
 import com.trio.backend.dto.hr.InterviewResponse;
 import com.trio.backend.dto.hr.InterviewStatistics;
+import com.trio.backend.dto.hr.UpdateInterviewNotesRequest;
 import com.trio.backend.dto.hr.UpdateInterviewRequest;
 import com.trio.backend.service.hr.InterviewService;
 import jakarta.validation.Valid;
@@ -82,6 +83,18 @@ public class InterviewController {
             @Valid @RequestBody UpdateInterviewRequest request) {
         return ApiResponse.success("Interview updated successfully.",
                 interviewService.update(workspaceId, departmentId, candidateId, interviewId, request));
+    }
+
+    @PutMapping("/{interviewId}/notes")
+    @PreAuthorize("@workspaceAuth.canManageDepartmentHR(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'INTERVIEW_UPDATE')")
+    public ApiResponse<InterviewResponse> updateNotes(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId,
+            @PathVariable UUID candidateId,
+            @PathVariable UUID interviewId,
+            @Valid @RequestBody UpdateInterviewNotesRequest request) {
+        return ApiResponse.success("Interview notes saved successfully.",
+                interviewService.updateNotes(workspaceId, departmentId, candidateId, interviewId, request));
     }
 
     @PostMapping("/{interviewId}/cancel")

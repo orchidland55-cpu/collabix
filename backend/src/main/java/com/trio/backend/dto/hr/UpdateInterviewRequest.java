@@ -16,6 +16,9 @@ public class UpdateInterviewRequest {
     @Size(max = 255)
     private String title;
 
+    @Size(max = 150)
+    private String position;
+
     @Size(max = 5000)
     private String description;
 
