@@ -28,3 +28,6 @@ backend/application-local.yml
 
 # ============ OS ============
 Thumbs.db
+
+.vercel
+.env*
