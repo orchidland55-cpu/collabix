@@ -22,7 +22,8 @@ VALUES
     ('MENTION_UPDATE', 'Update Mention', 'Allows updating mentions', NOW(), 0),
 
     -- Candidate Attachment (completing CRUD)
-    ('CANDIDATE_ATTACHMENT_UPDATE', 'Update Candidate Attachment', 'Allows updating candidate attachments', NOW(), 0);
+    ('CANDIDATE_ATTACHMENT_UPDATE', 'Update Candidate Attachment', 'Allows updating candidate attachments', NOW(), 0)
+ON CONFLICT (code) DO NOTHING;
 
 -- =========================================
 -- PART 2: ASSIGN PERMISSIONS TO ROLES
@@ -38,7 +39,8 @@ WHERE r.name = 'ADMIN'
     'ACTIVITY_CREATE', 'ACTIVITY_UPDATE', 'ACTIVITY_DELETE',
     'MENTION_UPDATE',
     'CANDIDATE_ATTACHMENT_UPDATE'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- MANAGER gets appropriate permissions
 INSERT INTO role_permissions (role_id, permission_id)
@@ -50,7 +52,8 @@ WHERE r.name = 'MANAGER'
     'ACTIVITY_CREATE', 'ACTIVITY_UPDATE', 'ACTIVITY_DELETE',
     'MENTION_UPDATE',
     'CANDIDATE_ATTACHMENT_UPDATE'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- =========================================
 -- PART 3: SUPER_ADMIN ROLE
@@ -65,4 +68,5 @@ WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'SUPER_ADMIN');
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r CROSS JOIN permissions p
-WHERE r.name = 'SUPER_ADMIN';
+WHERE r.name = 'SUPER_ADMIN'
+ON CONFLICT (role_id, permission_id) DO NOTHING;

@@ -25,4 +25,5 @@ WHERE r.name = 'MEMBER'
     'MENTION_READ',
     'NOTIFICATION_READ',
     'NOTIFICATION_UPDATE'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;

@@ -12,7 +12,8 @@ INSERT INTO permissions (code, display_name, description, created_at, version)
 VALUES
     ('REPORT_CREATE', 'Create Report', 'Allows creating reports using AI', NOW(), 0),
     ('REPORT_UPDATE', 'Update Report', 'Allows updating reports', NOW(), 0),
-    ('REPORT_READ', 'Read Report', 'Allows viewing reports', NOW(), 0);
+    ('REPORT_READ', 'Read Report', 'Allows viewing reports', NOW(), 0)
+ON CONFLICT (code) DO NOTHING;
 
 -- =========================================
 -- PART 2: ASSIGN NEW PERMISSIONS TO ROLES

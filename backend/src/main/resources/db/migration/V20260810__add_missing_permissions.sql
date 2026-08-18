@@ -236,7 +236,8 @@ VALUES
     ('ROLE_READ', 'Read Role', 'Allows viewing roles', NOW(), 0),
 
     -- Permission: Read (used by PermissionController)
-    ('PERMISSION_READ', 'Read Permission', 'Allows viewing permissions', NOW(), 0);
+    ('PERMISSION_READ', 'Read Permission', 'Allows viewing permissions', NOW(), 0)
+ON CONFLICT (code) DO NOTHING;
 
 -- =========================================
 -- PART 2: ASSIGN PERMISSIONS TO ROLES
@@ -289,7 +290,8 @@ WHERE r.name = 'ADMIN'
     'REPORT_VIEW', 'REPORT_EXPORT', 'REPORT_SCHEDULE', 'REPORT_HISTORY_VIEW',
     'ANALYTICS_VIEW', 'ANALYTICS_EXPORT',
     'ADMIN_USER_UNLOCK'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- MANAGER gets read + moderate write permissions
 INSERT INTO role_permissions (role_id, permission_id)
@@ -331,7 +333,8 @@ WHERE r.name = 'MANAGER'
     'AI_MODEL_READ', 'AI_MODEL_CREATE', 'AI_MODEL_UPDATE',
     'REPORT_VIEW', 'REPORT_EXPORT', 'REPORT_SCHEDULE', 'REPORT_HISTORY_VIEW',
     'ANALYTICS_VIEW'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- MEMBER gets minimal self-service permissions
 INSERT INTO role_permissions (role_id, permission_id)
@@ -340,4 +343,5 @@ FROM roles r CROSS JOIN permissions p
 WHERE r.name = 'MEMBER'
   AND p.code IN (
     'HANDOVER_ENTRY_CREATE', 'HANDOVER_ENTRY_READ'
-);
+)
+ON CONFLICT (role_id, permission_id) DO NOTHING;

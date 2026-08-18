@@ -86,21 +86,24 @@ INSERT INTO permissions (code, display_name, description, created_at, version)
 VALUES
     ('ALERT_READ', 'Read Alerts', 'Allows viewing alerts', NOW(), 0),
     ('ALERT_UPDATE', 'Update Alerts', 'Allows updating alerts (mark read)', NOW(), 0),
-    ('ALERT_DELETE', 'Delete Alerts', 'Allows dismissing/deleting alerts', NOW(), 0);
+    ('ALERT_DELETE', 'Delete Alerts', 'Allows dismissing/deleting alerts', NOW(), 0)
+ON CONFLICT (code) DO NOTHING;
 
 -- ADMIN gets all alert permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r CROSS JOIN permissions p
 WHERE r.name = 'ADMIN'
-  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE');
+  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- MANAGER gets all alert permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r CROSS JOIN permissions p
 WHERE r.name = 'MANAGER'
-  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE');
+  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- MEMBER gets all alert permissions (alerts are always scoped to the
 -- authenticated user, so ownership is enforced in the service layer).
@@ -108,4 +111,5 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r CROSS JOIN permissions p
 WHERE r.name = 'MEMBER'
-  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE');
+  AND p.code IN ('ALERT_READ', 'ALERT_UPDATE', 'ALERT_DELETE')
+ON CONFLICT (role_id, permission_id) DO NOTHING;

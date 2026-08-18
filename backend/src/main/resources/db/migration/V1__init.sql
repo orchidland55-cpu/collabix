@@ -264,7 +264,8 @@ SELECT
     p.id
 FROM roles r
          JOIN permissions p ON TRUE
-WHERE r.name = 'ADMIN';
+WHERE r.name = 'ADMIN'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id)
 
@@ -278,7 +279,8 @@ FROM roles r
                   'USER_READ',
                   'USER_UPDATE'
                      )
-WHERE r.name='MANAGER';
+WHERE r.name='MANAGER'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id)
 
@@ -292,7 +294,8 @@ FROM roles r
                   'ORGANIZATION_READ',
                   'ORGANIZATION_WRITE'
                      )
-WHERE r.name='ADMIN';
+WHERE r.name='ADMIN'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id)
 
