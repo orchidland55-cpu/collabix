@@ -1,5 +1,6 @@
 import axios, { type AxiosResponse, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { emitAuthEvent } from './auth-events';
+import { getApiBaseUrl } from './api-base';
 import type { ApiResponse, FieldError, ApiErrorResponse, PageResponse, Pageable } from '../types/api';
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
@@ -40,7 +41,7 @@ async function refreshOrWait(): Promise<{ accessToken: string; refreshToken: str
 /* ---------- Axios instance ---------- */
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
+  baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
   timeout: Number(import.meta.env.VITE_API_TIMEOUT ?? 15_000),
 });

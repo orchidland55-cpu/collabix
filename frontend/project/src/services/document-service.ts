@@ -1,4 +1,5 @@
 import { apiClient } from '../lib/api';
+import { getApiBaseUrl } from '../lib/api-base';
 import type { PageResponse } from '../types/api';
 import type { DocumentResponse, CreateDocumentRequest, UpdateDocumentRequest } from '../pages/knowledge/types/document-types';
 
@@ -50,7 +51,7 @@ export const documentService = {
     apiClient.get<PageResponse<DocumentResponse>>(`${base(wsId, deptId, projId)}/search`, { params: { query } }),
 
   download: (wsId: string, deptId: string, projId: string, docId: string): string =>
-    `${import.meta.env.VITE_API_BASE_URL ?? '/api'}${base(wsId, deptId, projId)}/${docId}/download`,
+    `${getApiBaseUrl()}${base(wsId, deptId, projId)}/${docId}/download`,
 
   getVersions: (wsId: string, deptId: string, projId: string, docId: string) =>
     apiClient.get<DocumentResponse[]>(`${base(wsId, deptId, projId)}/${docId}/versions`),

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Loader2, Download, CalendarClock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { getApiBaseUrl } from '../../../lib/api-base';
 import { Modal } from '../../../components/ui/Modal';
 import { Badge, type Tone } from '../../../components/ui/Badge';
 import { Avatar } from '../../../components/ui/Avatar';
@@ -60,7 +61,7 @@ export function EmployeeDetailModal({ wsId, deptId, employee, onClose, onEdit }:
   ], [emp]);
 
   const downloadDocumentUrl = (docId: string) =>
-    `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/workspaces/${wsId}/departments/${deptId}/employees/${employee.id}/documents/${docId}/download`;
+    `${getApiBaseUrl()}/workspaces/${wsId}/departments/${deptId}/employees/${employee.id}/documents/${docId}/download`;
 
   return (
     <Modal open onClose={onClose} title="Employee Profile" size="xl"

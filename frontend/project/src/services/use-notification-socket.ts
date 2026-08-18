@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth-context';
+import { getApiBaseUrl } from '../lib/api-base';
 
 /**
  * Opens a WebSocket to /ws/notifications?token=<accessToken> and invalidates
@@ -16,8 +17,8 @@ export function useNotificationSocket() {
     if (!isAuthenticated || !accessToken) return;
 
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const apiBase = import.meta.env.VITE_API_BASE_URL;
-    const wsHost = apiBase
+    const apiBase = getApiBaseUrl();
+    const wsHost = apiBase.startsWith('http')
       ? apiBase.replace(/\/api\/?$/, '').replace(/^https?:\/\//, '')
       : window.location.host;
     const url = `${wsProto}://${wsHost}/ws/notifications?token=${encodeURIComponent(accessToken)}`;
