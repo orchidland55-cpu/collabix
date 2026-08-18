@@ -16,7 +16,7 @@ const WORKSPACE_ROUTES = new Set([
 const WS_DEPENDENT_ROUTES = new Set([
   'workspace', 'workspace-overview', 'projects', 'tasks',
   'collaboration', 'documents', 'knowledge', 'handover', 'handover-entries',
-  'notifications', 'reports', 'activity', 'calendar', 'archived-projects',
+  'notifications', 'alerts', 'reports', 'activity', 'calendar', 'archived-projects',
   'organization', 'departments', 'teams', 'members',
   'settings', 'ai',
 ]);

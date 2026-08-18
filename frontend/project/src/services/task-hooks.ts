@@ -31,6 +31,7 @@ import { hasPermission, isAdmin, isManager, isMember, isSuperAdmin } from '../li
 import { useWorkspaceDetail } from './workspace-hooks';
 import { useProjectList } from './project-hooks';
 import { userService } from './user-service';
+import { UserStatus } from '../types';
 
 export {
   useTaskDepartmentContext,
@@ -129,7 +130,7 @@ export function useDepartmentMembers(wsId: string | undefined, deptId: string | 
     queryKey: ['tasks', 'department-members', wsId, deptId],
     queryFn: async () => {
       const page = await userService(wsId!).search(
-        { departmentId: deptId, status: 'ACTIVE' },
+        { departmentId: deptId, status: UserStatus.ACTIVE },
         0,
         200,
       );

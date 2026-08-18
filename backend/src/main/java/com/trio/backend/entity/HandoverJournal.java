@@ -174,6 +174,20 @@ public class HandoverJournal extends AuditableEntity {
     private UUID generationProcessedBy;
 
     // =========================================================================
+    // Approval status
+    // =========================================================================
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false, length = 20)
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    @Column(name = "approved_by")
+    private UUID approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    // =========================================================================
     // Soft delete
     // =========================================================================
 
@@ -187,6 +201,9 @@ public class HandoverJournal extends AuditableEntity {
     private void validateHierarchy() {
         if (generationStatus == null) {
             generationStatus = GenerationStatus.PENDING;
+        }
+        if (approvalStatus == null) {
+            approvalStatus = ApprovalStatus.PENDING;
         }
         if (status == null) {
             status = HandoverJournalStatus.ACTIVE;
@@ -215,6 +232,12 @@ public class HandoverJournal extends AuditableEntity {
         PENDING,
         GENERATED,
         FAILED
+    }
+
+    public enum ApprovalStatus {
+        PENDING,
+        APPROVED,
+        REJECTED
     }
 
     public enum HandoverJournalStatus {

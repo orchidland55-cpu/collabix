@@ -41,6 +41,8 @@ public class AnalyticsAIResponse {
 
     private AnalyticsReport.GenerationStatus generationStatus;
 
+    private AnalyticsReport.ApprovalStatus approvalStatus;
+
     private LocalDateTime generationDate;
 
     private UUID generatedBy;

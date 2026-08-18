@@ -3,18 +3,24 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth-context';
 
 /**
- * Opens a WebSocket to /ws/notifications?userId=<id> and invalidates the
- * notification queries whenever the server pushes a new notification.
+ * Opens a WebSocket to /ws/notifications?token=<accessToken> and invalidates
+ * the notification queries whenever the server pushes a new notification.
+ * The backend authenticates the connection from the signed access token and
+ * derives the recipient user id, ignoring any client-supplied user id.
  */
 export function useNotificationSocket() {
-  const { user, isAuthenticated } = useAuth();
+  const { accessToken, isAuthenticated } = useAuth();
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !accessToken) return;
 
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${window.location.host}/ws/notifications?userId=${encodeURIComponent(user.id)}`;
+    const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const apiBase = import.meta.env.VITE_API_BASE_URL;
+    const wsHost = apiBase
+      ? apiBase.replace(/\/api\/?$/, '').replace(/^https?:\/\//, '')
+      : window.location.host;
+    const url = `${wsProto}://${wsHost}/ws/notifications?token=${encodeURIComponent(accessToken)}`;
     const socket = new WebSocket(url);
 
     socket.onmessage = (event) => {
@@ -35,5 +41,5 @@ export function useNotificationSocket() {
     return () => {
       socket.close();
     };
-  }, [user?.id, isAuthenticated, qc]);
+  }, [accessToken, isAuthenticated, qc]);
 }

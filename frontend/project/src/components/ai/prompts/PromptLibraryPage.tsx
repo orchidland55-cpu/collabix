@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Clock, Star, Sparkles } from 'lucide-react';
+import { Star, Sparkles } from 'lucide-react';
 import { PromptHeader } from './PromptHeader';
 import { PromptSearch } from './PromptSearch';
 import { PromptCategoryNav, type PromptCategoryNavProps } from './PromptCategoryNav';

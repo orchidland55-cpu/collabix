@@ -6,7 +6,6 @@ import {
   LayoutList,
   Calendar,
   ChevronDown,
-  CheckCircle2,
   Clock,
   FolderKanban,
   MoreHorizontal,
@@ -17,7 +16,6 @@ import {
   Network,
   AlertCircle,
   ShieldBan,
-  Users,
 } from 'lucide-react';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';

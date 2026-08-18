@@ -89,6 +89,16 @@ public class AnalyticsReport extends AuditableEntity {
     @Column(name = "generation_processed_by")
     private UUID generationProcessedBy;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false, length = 20)
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    @Column(name = "approved_by")
+    private UUID approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -99,6 +109,9 @@ public class AnalyticsReport extends AuditableEntity {
     private void validateHierarchy() {
         if (generationStatus == null) {
             generationStatus = GenerationStatus.PENDING;
+        }
+        if (approvalStatus == null) {
+            approvalStatus = ApprovalStatus.PENDING;
         }
         if (status == null) {
             status = ReportStatus.ACTIVE;
@@ -123,6 +136,12 @@ public class AnalyticsReport extends AuditableEntity {
         PENDING,
         COMPLETED,
         FAILED
+    }
+
+    public enum ApprovalStatus {
+        PENDING,
+        APPROVED,
+        REJECTED
     }
 
     public enum ReportStatus {

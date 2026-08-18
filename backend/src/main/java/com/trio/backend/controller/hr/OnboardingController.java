@@ -125,9 +125,9 @@ public class OnboardingController {
                 onboardingService.updateTask(workspaceId, departmentId, onboardingId, taskId, request));
     }
 
-    @PutMapping("/{onboardingId}/tasks/{taskId}/Complete")
+    @PutMapping("/{onboardingId}/tasks/{taskId}/complete")
     @PreAuthorize("@workspaceAuth.canManageDepartmentHR(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ONBOARDING_TASK_MANAGE')")
-    public ApiResponse<OnboardingTaskResponse> CompleteTask(
+    public ApiResponse<OnboardingTaskResponse> completeTask(
             @PathVariable UUID workspaceId,
             @PathVariable UUID departmentId,
             @PathVariable UUID onboardingId,

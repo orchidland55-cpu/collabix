@@ -32,6 +32,7 @@ import {
   Activity,
   CalendarDays,
   Archive,
+  AlertTriangle,
 } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/query-client';
@@ -109,6 +110,7 @@ const DocumentsPage = lazy(() => import('./pages/knowledge/components/DocumentsP
 const DocumentDetailPage = lazy(() => import('./pages/knowledge/components/DocumentDetailPage').then((m) => ({ default: m.DocumentDetailPage })));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/components/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })));
 const NotificationsPage = lazy(() => import('./pages/productivity/Notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const AlertsPage = lazy(() => import('./pages/productivity/Alerts/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const DepartmentDetailPage = lazy(() => import('./pages/departments/DepartmentDetailPage').then((m) => ({ default: m.DepartmentDetailPage })));
 const WorkspaceOverviewPage = lazy(() => import('./pages/WorkspaceOverviewPage').then((m) => ({ default: m.WorkspaceOverviewPage })));
 const CreateWorkspacePage = lazy(() => import('./pages/CreateWorkspacePage').then((m) => ({ default: m.CreateWorkspacePage })));
@@ -153,6 +155,7 @@ const routeMeta: Record<string, RouteMeta> = {
   handover: { title: 'Handover Journal', icon: ScrollText },
   'handover-entries': { title: 'Handover Entries', icon: ScrollText },
   notifications: { title: 'Notifications', icon: Bell },
+  alerts: { title: 'Alerts', icon: AlertTriangle },
   reports: { title: 'Reports', icon: BarChart3 },
   organization: { title: 'Organization', icon: Building2 },
   departments: { title: 'Departments', icon: Network, parent: 'organization' },
@@ -557,6 +560,7 @@ function AppRoutes() {
         <Route path="handover" element={<Suspense fallback={<PageLoader />}><HandoverJournalPage /></Suspense>} />
         <Route path="handover-entries" element={<Suspense fallback={<PageLoader />}><HandoverEntriesPage /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense>} />
+        <Route path="alerts" element={<Suspense fallback={<PageLoader />}><AlertsPage /></Suspense>} />
         <Route path="reports" element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
         <Route path="organization" element={<AdminOnly><Suspense fallback={<PageLoader />}><OrganizationPage /></Suspense></AdminOnly>} />
         <Route path="departments" element={<AdminOnly><Suspense fallback={<PageLoader />}><DepartmentsPage /></Suspense></AdminOnly>} />

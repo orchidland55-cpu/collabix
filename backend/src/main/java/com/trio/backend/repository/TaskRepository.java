@@ -229,4 +229,56 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
             GROUP BY t.project.id, t.status
             """)
     List<Object[]> countActiveTasksByProjectAndStatusForWorkspace(@Param("workspaceId") UUID workspaceId);
+
+    // =========================================================================
+    // Alert scheduler queries
+    // =========================================================================
+
+    /**
+     * Finds open tasks with an assignee whose due date has passed, within a
+     * workspace. "Open" excludes terminal statuses (ARCHIVED, CANCELLED) and
+     * COMPLETED, since completed tasks are no longer overdue.
+     */
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.project.department.workspace.id = :workspaceId
+              AND t.assignee IS NOT NULL
+              AND t.dueAt IS NOT NULL
+              AND t.dueAt < :now
+              AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED, com.trio.backend.enums.TaskStatus.COMPLETED)
+            """)
+    List<Task> findOverdueAssignedTasksByWorkspaceId(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("now") Instant now
+    );
+
+    /**
+     * Finds open tasks with an assignee whose due date falls within the next
+     * alert window, within a workspace.
+     */
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.project.department.workspace.id = :workspaceId
+              AND t.assignee IS NOT NULL
+              AND t.dueAt IS NOT NULL
+              AND t.dueAt >= :from
+              AND t.dueAt <= :to
+              AND t.status NOT IN (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED, com.trio.backend.enums.TaskStatus.COMPLETED)
+            """)
+    List<Task> findDueSoonAssignedTasksByWorkspaceId(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
+
+    /**
+     * Finds blocked tasks with an assignee within a workspace.
+     */
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.project.department.workspace.id = :workspaceId
+              AND t.assignee IS NOT NULL
+              AND t.status = com.trio.backend.enums.TaskStatus.BLOCKED
+            """)
+    List<Task> findBlockedAssignedTasksByWorkspaceId(@Param("workspaceId") UUID workspaceId);
 }

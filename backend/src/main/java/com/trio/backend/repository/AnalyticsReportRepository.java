@@ -37,6 +37,19 @@ public interface AnalyticsReportRepository extends JpaRepository<AnalyticsReport
     );
 
     @Query("""
+            SELECT ar FROM AnalyticsReport ar
+            WHERE ar.workspace.id = :workspaceId
+              AND ar.department.id = :departmentId
+              AND ar.status = 'ACTIVE'
+            ORDER BY ar.createdAt DESC
+            """)
+    Page<AnalyticsReport> findByWorkspaceAndDepartmentPaginated(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("departmentId") UUID departmentId,
+            Pageable pageable
+    );
+
+    @Query("""
             UPDATE AnalyticsReport ar
             SET ar.status = 'DELETED'
             WHERE ar.id = :reportId

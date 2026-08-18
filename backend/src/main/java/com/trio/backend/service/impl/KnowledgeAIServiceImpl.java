@@ -22,6 +22,7 @@ import com.trio.backend.security.ai.AIScopeAuthorization;
 import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.service.KnowledgeAIService;
 import com.trio.backend.service.KnowledgeDataCollector;
+import com.trio.backend.service.AlertGenerationHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -50,6 +51,7 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final AIScopeAuthorization aiScopeAuthorization;
+    private final AlertGenerationHelper alertGenerationHelper;
 
     @Override
     public KnowledgeAIResponse ask(UUID workspaceId, UUID departmentId, UUID projectId, String question) {
@@ -80,7 +82,16 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
         executionRequest.setContext(collectedData);
 
         long start = System.currentTimeMillis();
-        AIExecutionResponse aiResponse = orchestratorService.execute(executionRequest);
+        AIExecutionResponse aiResponse;
+        try {
+            aiResponse = orchestratorService.execute(executionRequest);
+        } catch (RuntimeException ex) {
+            alertGenerationHelper.recordAiFailure(
+                    workspaceId, userId, departmentId, "KNOWLEDGE", null,
+                    "AI knowledge search failed",
+                    "The AI could not answer your question. Please try again.");
+            throw ex;
+        }
         long executionTime = System.currentTimeMillis() - start;
 
         List<KnowledgeSource> sources = buildSources(collectedData);

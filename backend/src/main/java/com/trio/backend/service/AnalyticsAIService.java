@@ -3,6 +3,7 @@ package com.trio.backend.service;
 import com.trio.backend.dto.ai.AnalyticsAIEditRequest;
 import com.trio.backend.dto.ai.AnalyticsAIResponse;
 import com.trio.backend.enums.AIScopeType;
+import org.springframework.data.domain.Page;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -23,4 +24,8 @@ public interface AnalyticsAIService {
     AnalyticsAIResponse approve(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId);
 
     AnalyticsAIResponse reject(UUID workspaceId, UUID departmentId, UUID projectId, UUID reportId);
+
+    Page<AnalyticsAIResponse> getHistory(UUID workspaceId, int page, int size);
+
+    AnalyticsAIResponse getById(UUID workspaceId, UUID reportId);
 }

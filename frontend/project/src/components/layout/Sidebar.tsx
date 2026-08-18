@@ -31,10 +31,12 @@ import {
   Archive,
   Hash,
   Search,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAuth, type User } from '../../lib/auth-context';
 import { useUnreadCount } from '../../services/notification-hooks';
+import { useAlertUnreadCount } from '../../services/alert-hooks';
 import { isAdmin, isManager, detectDeptType, deptTypeLabel } from '../../lib/access';
 import { DEPT_TABS } from '../../pages/departments/department-tabs';
 
@@ -106,6 +108,7 @@ const ADMIN_NAV: { title: string; items: NavItem[] }[] = [
       { id: 'ai', label: 'Collabix AI', icon: <Sparkles /> },
       { id: 'activity', label: 'Activity Center', icon: <Activity /> },
       { id: 'notifications', label: 'Notifications', icon: <Bell /> },
+      { id: 'alerts', label: 'Alerts', icon: <AlertTriangle /> },
       { id: 'calendar', label: 'Calendar', icon: <CalendarDays /> },
       { id: 'reports', label: 'Reports', icon: <BarChart3 /> },
     ],
@@ -181,6 +184,7 @@ const TOOL_ITEMS: NavItem[] = [
   { id: 'ai', label: 'Collabix AI', icon: <Sparkles /> },
   { id: 'activity', label: 'Activity Center', icon: <Activity /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell /> },
+  { id: 'alerts', label: 'Alerts', icon: <AlertTriangle /> },
   { id: 'calendar', label: 'Calendar', icon: <CalendarDays /> },
 ];
 
@@ -194,10 +198,15 @@ const MEMBER_TOOL_ITEMS: NavItem[] = [
   { id: 'handover', label: 'Handover Journal', icon: <ScrollText /> },
   { id: 'ai', label: 'Collabix AI', icon: <Sparkles /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell /> },
+  { id: 'alerts', label: 'Alerts', icon: <AlertTriangle /> },
   { id: 'calendar', label: 'Calendar', icon: <CalendarDays /> },
 ];
 
-function buildNavSections(user: User | null, notifCount: number | undefined) {
+function buildNavSections(
+  user: User | null,
+  notifCount: number | undefined,
+  alertCount: number | undefined,
+) {
   const roles = user?.roles ?? [];
   const perms = user?.permissions ?? [];
 
@@ -205,7 +214,7 @@ function buildNavSections(user: User | null, notifCount: number | undefined) {
     const sections = ADMIN_NAV
       .map((s) => applyPermissionFilters(s, perms))
       .filter(Boolean) as typeof ADMIN_NAV;
-    return applyBadge(sections, notifCount);
+    return applyBadge(sections, notifCount, alertCount);
   }
 
   const dashboardId = isManager(roles) && user?.departmentId ? 'dept-dashboard' : 'dashboard';
@@ -234,12 +243,13 @@ function buildNavSections(user: User | null, notifCount: number | undefined) {
     items: isManager(roles) ? TOOL_ITEMS : MEMBER_TOOL_ITEMS,
   });
 
-  return applyBadge(sections, notifCount);
+  return applyBadge(sections, notifCount, alertCount);
 }
 
 function applyBadge(
   sections: { title: string; items: NavItem[] }[],
   notifCount: number | undefined,
+  alertCount: number | undefined,
 ): { title: string; items: NavItem[] }[] {
   return sections.map((section) => ({
     ...section,
@@ -247,6 +257,9 @@ function applyBadge(
       let badge = item.badge;
       if (item.id === 'notifications' && notifCount !== undefined) {
         badge = notifCount;
+      }
+      if (item.id === 'alerts' && alertCount !== undefined) {
+        badge = alertCount;
       }
       return { ...item, badge };
     }),
@@ -408,8 +421,12 @@ function SidebarContent({
   const [searchParams] = useSearchParams();
   const wsId = searchParams.get('ws') ?? '';
   const { data: notifCount } = useUnreadCount(wsId);
+  const { data: alertCount } = useAlertUnreadCount(wsId);
 
-  const visibleSections = useMemo(() => buildNavSections(user ?? null, notifCount), [user, notifCount]);
+  const visibleSections = useMemo(
+    () => buildNavSections(user ?? null, notifCount, alertCount),
+    [user, notifCount, alertCount],
+  );
 
   return (
     <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-4">

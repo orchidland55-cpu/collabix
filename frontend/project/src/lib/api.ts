@@ -42,7 +42,7 @@ async function refreshOrWait(): Promise<{ accessToken: string; refreshToken: str
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15_000,
+  timeout: Number(import.meta.env.VITE_API_TIMEOUT ?? 15_000),
 });
 
 /* ---------- Request interceptor ---------- */
@@ -55,12 +55,7 @@ api.interceptors.request.use((config) => {
   }
   // Let the browser set multipart boundary automatically for file uploads.
   if (config.data instanceof FormData && config.headers) {
-    const headers = config.headers;
-    if (typeof headers.setContentType === 'function') {
-      headers.setContentType(undefined);
-    } else {
-      delete headers['Content-Type'];
-    }
+    delete config.headers['Content-Type'];
   }
   return config;
 });

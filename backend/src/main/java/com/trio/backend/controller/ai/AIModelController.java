@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -78,7 +79,8 @@ public class AIModelController {
             @PathVariable UUID workspaceId,
             @PathVariable UUID departmentId,
             @PathVariable UUID modelId,
-            @RequestBody String newStatus) {
+            @RequestBody Map<String, String> body) {
+        String newStatus = body.get("status");
         return ApiResponse.success("AI model status updated successfully.",
                 aiModelService.updateStatus(departmentId, modelId, newStatus));
     }

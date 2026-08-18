@@ -45,6 +45,8 @@ export const DEPT_TABS: Record<DeptType, DepartmentTab[]> = {
     { id: 'attendance', label: 'Attendance', icon: Timer },
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   ],
   development: [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },

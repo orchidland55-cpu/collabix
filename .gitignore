@@ -1,3 +1,30 @@
+# ============ Environment ============
 .env
 .env.local
+.env.*.local
+
+# ============ Frontend ============
+frontend/project/node_modules/
+frontend/project/dist/
+frontend/project/.env.local
+frontend/project/.env.*.local
+frontend/project/*.log
+
+# ============ Backend ============
+backend/target/
 backend/.env
+backend/*.log
+backend/uploads/
+backend/application-local.properties
+backend/application-local.yml
+
+# ============ IDE / Editors ============
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============ OS ============
+Thumbs.db

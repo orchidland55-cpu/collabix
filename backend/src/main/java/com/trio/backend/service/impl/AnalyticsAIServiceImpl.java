@@ -23,8 +23,12 @@ import com.trio.backend.security.ai.AIScopeAuthorization;
 import com.trio.backend.util.AIScopeUtils;
 import com.trio.backend.service.AnalyticsAIService;
 import com.trio.backend.service.AnalyticsDataCollector;
+import com.trio.backend.service.AlertGenerationHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -49,6 +53,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final AIScopeAuthorization aiScopeAuthorization;
+    private final AlertGenerationHelper alertGenerationHelper;
 
     @Override
     public AnalyticsAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId,
@@ -77,7 +82,16 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
         executionRequest.setContext(collectedData);
 
         long start = System.currentTimeMillis();
-        AIExecutionResponse aiResponse = orchestratorService.execute(executionRequest);
+        AIExecutionResponse aiResponse;
+        try {
+            aiResponse = orchestratorService.execute(executionRequest);
+        } catch (RuntimeException ex) {
+            alertGenerationHelper.recordAiFailure(
+                    workspaceId, userId, departmentId, "ANALYTICS_REPORT", null,
+                    "AI analytics generation failed",
+                    "The AI could not generate the analytics report. Please try again.");
+            throw ex;
+        }
         long executionTime = System.currentTimeMillis() - start;
 
         return saveReport(workspaceId, departmentId, projectId, userId, startDate, endDate,
@@ -124,7 +138,9 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
 
-        report.setGenerationStatus(AnalyticsReport.GenerationStatus.COMPLETED);
+        report.setApprovalStatus(AnalyticsReport.ApprovalStatus.APPROVED);
+        report.setApprovedBy(userId);
+        report.setApprovedAt(LocalDateTime.now());
         AnalyticsReport saved = analyticsReportRepository.save(report);
         return toResponse(saved, System.currentTimeMillis());
     }
@@ -137,9 +153,37 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
         AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
 
-        report.setGenerationStatus(AnalyticsReport.GenerationStatus.FAILED);
+        report.setApprovalStatus(AnalyticsReport.ApprovalStatus.REJECTED);
+        report.setApprovedBy(userId);
+        report.setApprovedAt(LocalDateTime.now());
         AnalyticsReport saved = analyticsReportRepository.save(report);
         return toResponse(saved, System.currentTimeMillis());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AnalyticsAIResponse> getHistory(UUID workspaceId, int page, int size) {
+        UUID userId = getAuthenticatedUserId();
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, userId);
+
+        return aiScopeAuthorization.resolveReadableDepartmentFilter(workspaceId)
+                .map(deptId -> analyticsReportRepository.findByWorkspaceAndDepartmentPaginated(
+                        workspaceId, deptId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))
+                .orElseGet(() -> analyticsReportRepository.findByWorkspacePaginated(
+                        workspaceId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))
+                .map(report -> toResponse(report, 0L));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AnalyticsAIResponse getById(UUID workspaceId, UUID reportId) {
+        aiScopeAuthorization.assertActiveWorkspaceMember(workspaceId, aiScopeAuthorization.currentUserId());
+        AnalyticsReport report = analyticsReportRepository.findByIdAndWorkspace(reportId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Analytics report not found"));
+
+        UUID deptId = report.getDepartment() != null ? report.getDepartment().getId() : null;
+        aiScopeAuthorization.assertCanReadDepartmentScopedContent(workspaceId, deptId);
+        return toResponse(report, 0L);
     }
 
     private AnalyticsAIResponse saveReport(UUID workspaceId, UUID departmentId, UUID projectId,
@@ -196,6 +240,7 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
                 .recommendations(report.getRecommendations())
                 .detailedReport(report.getDetailedReport())
                 .generationStatus(report.getGenerationStatus())
+                .approvalStatus(report.getApprovalStatus())
                 .generationDate(report.getGenerationDate())
                 .generatedBy(report.getGenerationProcessedBy())
                 .executionTime(executionTime)

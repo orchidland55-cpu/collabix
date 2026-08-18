@@ -12,6 +12,7 @@ import { AIReportViewerCharts } from './AIReportViewerCharts';
 import { AIReportViewerSources } from './AIReportViewerSources';
 import { AIReportViewerActions } from './AIReportViewerActions';
 import { AIReportViewerRelated } from './AIReportViewerRelated';
+import type { Insight, Recommendation } from './AIReportViewerTypes';
 import { AIEmptyState } from '../AIEmptyState';
 import { AILoadingHero } from '../AILoadingCard';
 
@@ -68,8 +69,18 @@ export function AIReportViewerPage() {
     );
   }
 
-  const insights = [data.majorHighlights, data.businessHealth, data.productivityReview].filter(Boolean) as string[];
-  const recommendations = [data.recommendations, data.strategicPriorities].filter(Boolean) as string[];
+  const allInsights: Insight[] = [
+    { id: 'major-highlights', icon: 'trending-up', title: 'Major Highlights', description: data.majorHighlights, priority: 'high' },
+    { id: 'business-health', icon: 'bar-chart', title: 'Business Health', description: data.businessHealth, priority: 'medium' },
+    { id: 'productivity-review', icon: 'users', title: 'Productivity Review', description: data.productivityReview, priority: 'low' },
+  ];
+  const insights = allInsights.filter((i) => i.description);
+
+  const allRecommendations: Recommendation[] = [
+    { id: 'recommendations', title: 'Recommendations', description: data.recommendations, businessImpact: data.finalReport || '', priority: 'high', suggestedAction: data.nextActions },
+    { id: 'strategic-priorities', title: 'Strategic Priorities', description: data.strategicPriorities, businessImpact: '', priority: 'medium', suggestedAction: '' },
+  ];
+  const recommendations = allRecommendations.filter((r) => r.description);
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in max-w-[1440px] mx-auto">
@@ -79,7 +90,7 @@ export function AIReportViewerPage() {
         workspace="Workspace"
         department={data.departmentId ?? 'Department'}
         category={data.reportType}
-        status={data.approvalStatus}
+        status={data.approvalStatus === 'APPROVED' ? 'completed' : 'draft'}
         favorite={favorite}
         onToggleFavorite={() => setFavorite(!favorite)}
       />
@@ -89,12 +100,12 @@ export function AIReportViewerPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h2 className="text-section font-semibold text-text-primary mb-4">Key Insights</h2>
-          <AIReportViewerInsights insights={insights.length ? insights : ['No insights available.']} />
+          <AIReportViewerInsights insights={insights} />
         </div>
 
         <div>
           <h2 className="text-section font-semibold text-text-primary mb-4">Recommendations</h2>
-          <AIReportViewerRecommendations recommendations={recommendations.length ? recommendations : ['No recommendations available.']} />
+          <AIReportViewerRecommendations recommendations={recommendations} />
         </div>
 
         <AIReportViewerCharts />

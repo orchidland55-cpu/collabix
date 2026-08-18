@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/Input';
 import { Badge } from '../../../components/ui/Badge';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { useWorkspaceDocuments } from '../../../services/document-hooks';
+import { downloadAuthenticatedFile } from '../../../lib/file-download';
 import { getFileIcon, formatFileSize, formatDate } from '../../knowledge/types/document-types';
 
 export function DeptDocuments({ wsId }: { wsId?: string; deptId?: string }) {
@@ -112,14 +113,14 @@ export function DeptDocuments({ wsId }: { wsId?: string; deptId?: string }) {
                     <span>{d.updatedBy}</span>
                     <span>• {formatDate(d.updatedAt)}</span>
                   </div>
-                  <a
-                    href={`${import.meta.env.VITE_API_BASE_URL ?? '/api'}/workspaces/${wsId}/documents/${d.id}/download`}
+                  <button
+                    type="button"
                     className="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:bg-surface-2 hover:text-text-primary transition-colors"
                     title="Download"
-                    onClick={(e) => e.preventDefault()}
+                    onClick={() => downloadAuthenticatedFile(`/workspaces/${wsId}/documents/${d.id}/download`, d.fileName ?? d.title).catch(() => {})}
                   >
                     <Download className="h-3.5 w-3.5" />
-                  </a>
+                  </button>
                 </div>
               </CardBody>
             </Card>

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -101,5 +102,26 @@ public class AnalyticsAIController {
                 reportId
         );
         return ApiResponse.success("AI analytics report rejected.", response);
+    }
+
+    @PreAuthorize("@permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @Operation(summary = "Retrieve analytics report history")
+    @GetMapping("/history")
+    public ApiResponse<Page<AnalyticsAIResponse>> getHistory(
+            @RequestParam UUID workspaceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<AnalyticsAIResponse> history = analyticsAIService.getHistory(workspaceId, page, size);
+        return ApiResponse.success("Analytics report history retrieved successfully.", history);
+    }
+
+    @PreAuthorize("@permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @Operation(summary = "Retrieve a single AI analytics report")
+    @GetMapping("/{reportId}")
+    public ApiResponse<AnalyticsAIResponse> getById(
+            @PathVariable UUID reportId,
+            @RequestParam UUID workspaceId) {
+        return ApiResponse.success("AI analytics report retrieved successfully.",
+                analyticsAIService.getById(workspaceId, reportId));
     }
 }

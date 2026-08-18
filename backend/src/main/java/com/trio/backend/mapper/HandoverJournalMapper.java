@@ -23,5 +23,8 @@ public interface HandoverJournalMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "updatedBy", ignore = true)
     @Mapping(target = "version", ignore = true)
+    @Mapping(target = "approvalStatus", ignore = true)
+    @Mapping(target = "approvedBy", ignore = true)
+    @Mapping(target = "approvedAt", ignore = true)
     HandoverJournal toEntity(HandoverJournalResponse handoverJournalResponse);
 }

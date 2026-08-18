@@ -231,7 +231,23 @@ public class TeamServiceImpl implements TeamService {
             return;
         }
 
-        // TODO: verifiesr ressources actives (Tasks, Documents...) quand modules existeront.
+        long activeTaskCount = ((Number) entityManager.createQuery(
+                "select count(t) from Task t where t.sprint.team.id = :teamId " +
+                        "and t.status not in (com.trio.backend.enums.TaskStatus.ARCHIVED, com.trio.backend.enums.TaskStatus.CANCELLED)")
+                .setParameter("teamId", teamId)
+                .getSingleResult()).longValue();
+        if (activeTaskCount > 0) {
+            throw new ConflictException("Team cannot be archived while it still has active tasks.");
+        }
+
+        long activeSprintCount = ((Number) entityManager.createQuery(
+                "select count(s) from Sprint s where s.team.id = :teamId " +
+                        "and s.status in (com.trio.backend.enums.SprintStatus.PLANNED, com.trio.backend.enums.SprintStatus.ACTIVE)")
+                .setParameter("teamId", teamId)
+                .getSingleResult()).longValue();
+        if (activeSprintCount > 0) {
+            throw new ConflictException("Team cannot be archived while it still has active sprints.");
+        }
 
         team.setStatus(WorkspaceStatus.ARCHIVED);
         teamRepository.save(team);

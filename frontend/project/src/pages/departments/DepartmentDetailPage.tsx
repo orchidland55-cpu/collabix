@@ -21,6 +21,8 @@ import { InterviewsTab } from './hr/InterviewsTab';
 import { AttendanceTab } from './hr/AttendanceTab';
 import { NotificationsTab } from './hr/NotificationsTab';
 import { DocumentsTab as HrDocumentsTab } from './hr/DocumentsTab';
+import { HrReportsTab } from './hr/ReportsTab';
+import { HrAnalyticsTab } from './hr/AnalyticsTab';
 
 /* Development workflows */
 import { DevelopmentDashboardTab } from './development/DashboardTab';
@@ -119,7 +121,7 @@ export function DepartmentDetailPage({ departmentId, onBack }: { departmentId: s
   const renderActive = () => {
     const shared: Record<string, React.ReactNode> = {
       documents: deptType === 'hr' ? <HrDocumentsTab wsId={wsId} deptId={departmentId} /> : <DeptDocuments wsId={wsId} deptId={departmentId} />,
-      reports: <DeptReports wsId={wsId} deptId={departmentId} />,
+      reports: deptType === 'hr' ? <HrReportsTab wsId={wsId} deptId={departmentId} /> : <DeptReports wsId={wsId} deptId={departmentId} />,
       activity: <DeptActivity wsId={wsId} deptId={departmentId} />,
       settings: <DeptSettings wsId={wsId} deptId={departmentId} />,
     };
@@ -146,6 +148,7 @@ export function DepartmentDetailPage({ departmentId, onBack }: { departmentId: s
           case 'reviews': return <PerformanceReviewsTab wsId={wsId} deptId={departmentId} />;
           case 'attendance': return <AttendanceTab wsId={wsId} deptId={departmentId} />;
           case 'notifications': return <NotificationsTab wsId={wsId} deptId={departmentId} />;
+          case 'analytics': return <HrAnalyticsTab wsId={wsId} deptId={departmentId} />;
           default: return null;
         }
       case 'development':

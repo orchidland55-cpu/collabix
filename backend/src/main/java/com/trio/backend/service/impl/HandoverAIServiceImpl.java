@@ -17,6 +17,7 @@ import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.service.HandoverAIService;
 import com.trio.backend.service.HandoverDataCollector;
 import com.trio.backend.service.HandoverSupport;
+import com.trio.backend.service.AlertGenerationHelper;
 import com.trio.backend.enums.AIScopeType;
 import com.trio.backend.security.ai.AIScopeAuthorization;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class HandoverAIServiceImpl implements HandoverAIService {
     private final HandoverJournalMapper handoverJournalMapper;
     private final HandoverSupport support;
     private final AIScopeAuthorization aiScopeAuthorization;
+    private final AlertGenerationHelper alertGenerationHelper;
 
     @Override
     public HandoverAIResponse generate(UUID workspaceId, UUID departmentId, UUID projectId) {
@@ -73,7 +75,16 @@ public class HandoverAIServiceImpl implements HandoverAIService {
         executionRequest.setContext(collectedData);
 
         long start = System.currentTimeMillis();
-        AIExecutionResponse aiResponse = orchestratorService.execute(executionRequest);
+        AIExecutionResponse aiResponse;
+        try {
+            aiResponse = orchestratorService.execute(executionRequest);
+        } catch (RuntimeException ex) {
+            alertGenerationHelper.recordAiFailure(
+                    workspaceId, userId, departmentId, "HANDOVER", null,
+                    "AI handover generation failed",
+                    "The AI could not generate the handover journal. Please try again.");
+            throw ex;
+        }
         long executionTime = System.currentTimeMillis() - start;
 
         return saveJournal(workspaceId, departmentId, projectId, userId, collectedData, aiResponse, executionTime, date, shift);
@@ -124,7 +135,9 @@ public class HandoverAIServiceImpl implements HandoverAIService {
         HandoverJournal journal = handoverJournalRepository.findByIdAndWorkspace(journalId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Handover journal not found"));
 
-        journal.setGenerationStatus(HandoverJournal.GenerationStatus.GENERATED);
+        journal.setApprovalStatus(HandoverJournal.ApprovalStatus.APPROVED);
+        journal.setApprovedBy(userId);
+        journal.setApprovedAt(LocalDateTime.now());
         HandoverJournal saved = handoverJournalRepository.save(journal);
         return toResponse(saved, System.currentTimeMillis());
     }
@@ -137,7 +150,9 @@ public class HandoverAIServiceImpl implements HandoverAIService {
         HandoverJournal journal = handoverJournalRepository.findByIdAndWorkspace(journalId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Handover journal not found"));
 
-        journal.setGenerationStatus(HandoverJournal.GenerationStatus.FAILED);
+        journal.setApprovalStatus(HandoverJournal.ApprovalStatus.REJECTED);
+        journal.setApprovedBy(userId);
+        journal.setApprovedAt(LocalDateTime.now());
         HandoverJournal saved = handoverJournalRepository.save(journal);
         return toResponse(saved, System.currentTimeMillis());
     }

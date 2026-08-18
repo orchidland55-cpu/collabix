@@ -55,6 +55,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentMapper documentMapper;
     private final StorageService storageService;
     private final NotificationService notificationService;
+    private final AlertGenerationHelper alertGenerationHelper;
 
     @Override
     @Transactional
@@ -122,11 +123,21 @@ public class DocumentServiceImpl implements DocumentService {
             throw new ResourceNotFoundException("Project not found.");
         }
 
-        String storagePath = storageService.store(
-                getBytes(file),
-                file.getOriginalFilename(),
-                file.getContentType()
-        );
+        String storagePath;
+        try {
+            storagePath = storageService.store(
+                    getBytes(file),
+                    file.getOriginalFilename(),
+                    file.getContentType()
+            );
+        } catch (RuntimeException ex) {
+            alertGenerationHelper.recordDocumentUploadFailure(
+                    workspaceId, userId, departmentId, null,
+                    "Document upload failed",
+                    "The document \"" + (title != null ? title : file.getOriginalFilename())
+                            + "\" could not be stored. Please try again.");
+            throw ex;
+        }
 
         Document document = new Document();
         document.setProject(project);

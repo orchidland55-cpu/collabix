@@ -18,6 +18,7 @@ import com.trio.backend.util.AIScopeUtils;
 import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.service.ReportingAIService;
 import com.trio.backend.service.ReportingDataCollector;
+import com.trio.backend.service.AlertGenerationHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -48,6 +49,7 @@ public class ReportingAIServiceImpl implements ReportingAIService {
     private final ProjectRepository projectRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final AIScopeAuthorization aiScopeAuthorization;
+    private final AlertGenerationHelper alertGenerationHelper;
 
     @Override
     public ReportingResponse generate(ReportingGenerateRequest request) {
@@ -82,7 +84,16 @@ public class ReportingAIServiceImpl implements ReportingAIService {
         executionRequest.setContext(collectedData);
 
         long start = System.currentTimeMillis();
-        AIExecutionResponse aiResponse = orchestratorService.execute(executionRequest);
+        AIExecutionResponse aiResponse;
+        try {
+            aiResponse = orchestratorService.execute(executionRequest);
+        } catch (RuntimeException ex) {
+            alertGenerationHelper.recordAiFailure(
+                    workspaceId, userId, departmentId, "EXECUTIVE_REPORT", null,
+                    "AI report generation failed",
+                    "The AI could not generate the executive report. Please try again.");
+            throw ex;
+        }
         long executionTime = System.currentTimeMillis() - start;
 
         return saveReport(request, userId, aiResponse, executionTime);
