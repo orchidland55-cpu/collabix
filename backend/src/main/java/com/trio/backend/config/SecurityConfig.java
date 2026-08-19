@@ -22,6 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,6 +41,9 @@ public class SecurityConfig {
 
     @Value("${app.cors.allowed-origins:}")
     private String additionalAllowedOrigins;
+
+    @Value("${app.security.csp.connect-src}")
+    private String cspConnectSrc;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http)
@@ -67,7 +71,7 @@ public class SecurityConfig {
 
                 .headers(headers -> headers
                         .contentSecurityPolicy(csp -> csp
-                                .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:5173; frame-ancestors 'none'")
+                                .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' " + cspConnectSrc + "; frame-ancestors 'none'")
                         )
                         .contentTypeOptions(Customizer.withDefaults())
                         .frameOptions(frame -> frame.deny())
@@ -81,6 +85,11 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+
+                        // CORS preflight (always allowed)
+
+                        .requestMatchers(CorsUtils::isPreFlightRequest)
+                        .permitAll()
 
                         // Swagger
 
