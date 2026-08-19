@@ -31,6 +31,8 @@ public interface UserService {
 
     void softDelete(UUID workspaceId, UUID id);
 
+    void hardDelete(UUID workspaceId, UUID id);
+
     UserResponse activate(UUID workspaceId, UUID id);
 
     UserResponse deactivate(UUID workspaceId, UUID id);

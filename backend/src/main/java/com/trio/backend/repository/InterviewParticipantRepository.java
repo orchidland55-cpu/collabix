@@ -12,5 +12,7 @@ public interface InterviewParticipantRepository extends JpaRepository<InterviewP
 
     List<InterviewParticipant> findAllByUser_Id(UUID userId);
 
+    void deleteByUser_Id(UUID userId);
+
     boolean existsByInterview_IdAndUser_Id(UUID interviewId, UUID userId);
 }

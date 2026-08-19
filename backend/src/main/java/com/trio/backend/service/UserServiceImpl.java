@@ -31,6 +31,8 @@ import com.trio.backend.exception.ForbiddenException;
 import com.trio.backend.exception.ResourceNotFoundException;
 import com.trio.backend.mapper.UserMapper;
 import com.trio.backend.repository.DepartmentRepository;
+import com.trio.backend.repository.InterviewParticipantRepository;
+import com.trio.backend.repository.MentionRepository;
 import com.trio.backend.repository.RoleRepository;
 import com.trio.backend.repository.TeamMemberRepository;
 import com.trio.backend.repository.TeamRepository;
@@ -74,6 +76,8 @@ public class UserServiceImpl implements UserService {
     private final DepartmentRepository departmentRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final MentionRepository mentionRepository;
+    private final InterviewParticipantRepository interviewParticipantRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final UserHistoryService userHistoryService;
@@ -436,6 +440,27 @@ public class UserServiceImpl implements UserService {
                 null, UserStatus.SOFT_DELETED.name(),
                 "User soft deleted"
         );
+    }
+
+    @Override
+    public void hardDelete(UUID workspaceId, UUID id) {
+        User user = userRepository.findByIdAndWorkspaceId(id, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found in this workspace."));
+
+        if (id.equals(getAuthenticatedUserId())) {
+            throw new ConflictException("You cannot permanently remove your own account.");
+        }
+
+        if (!workspaceRepository.findAllByOwner_Id(id).isEmpty()) {
+            throw new ConflictException(
+                    "User owns a workspace and cannot be permanently removed. Transfer workspace ownership first."
+            );
+        }
+
+        mentionRepository.deleteByUser_Id(id);
+        interviewParticipantRepository.deleteByUser_Id(id);
+
+        userRepository.delete(user);
     }
 
     @Override

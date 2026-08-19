@@ -106,6 +106,17 @@ public class UserController {
         userService.softDelete(workspaceId, id);
     }
 
+    @DeleteMapping("/{id}/permanent")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'USER_DELETE')")
+    @Operation(summary = "Permanently remove a user from the database", security = @SecurityRequirement(name = "bearerAuth"))
+    public void hardDelete(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID id
+    ) {
+        userService.hardDelete(workspaceId, id);
+    }
+
     @PutMapping("/{id}/activate")
     @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'USER_ACTIVATE')")
     @Operation(summary = "Activate a pending activation user", security = @SecurityRequirement(name = "bearerAuth"))

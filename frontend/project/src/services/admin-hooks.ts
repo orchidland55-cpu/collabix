@@ -121,6 +121,21 @@ export function useDeleteUser() {
   });
 }
 
+export function useDeleteUserPermanent() {
+  const qc = useQueryClient();
+  const wsId = useEffectiveWorkspaceId();
+
+  return useMutation({
+    mutationFn: (id: string) => {
+      if (!wsId) throw new Error('No workspace selected');
+      return userService(wsId).deletePermanent(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.all });
+    },
+  });
+}
+
 export function useActivateUser() {
   const qc = useQueryClient();
   const wsId = useEffectiveWorkspaceId();

@@ -52,6 +52,9 @@ export function userService(workspaceId: string) {
     delete: (id: string) =>
       apiClient.delete<void>(`${base}/${id}`),
 
+    deletePermanent: (id: string) =>
+      apiClient.delete<void>(`${base}/${id}/permanent`),
+
     activate: (id: string) =>
       apiClient.put<UserResponse>(`${base}/${id}/activate`),
 

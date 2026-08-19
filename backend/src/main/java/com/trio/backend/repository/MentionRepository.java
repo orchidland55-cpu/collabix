@@ -30,6 +30,8 @@ import java.util.UUID;
 @Repository
 public interface MentionRepository extends JpaRepository<Mention, UUID> {
 
+    void deleteByUser_Id(UUID userId);
+
     // ==================== CRUD ====================
 
     /**

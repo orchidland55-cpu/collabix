@@ -25,7 +25,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { Can } from '../../../pages/auth';
 import { cn } from '../../../lib/cn';
-import { useUsersList, useUserStatistics, useDeleteUser, useActivateUser, useDeactivateUser } from '../../../services/admin-hooks';
+import { useUsersList, useUserStatistics, useDeleteUser, useDeleteUserPermanent, useActivateUser, useDeactivateUser } from '../../../services/admin-hooks';
 import { useToast } from '../../../components/ui/Toast';
 import { EditUserModal } from './EditUserModal';
 import type { UserResponse } from '../../../types';
@@ -46,13 +46,14 @@ export function UsersManagementPage({
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'deactivate' | 'activate'; userId?: string; label: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'remove' | 'deactivate' | 'activate'; userId?: string; label: string } | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
 
   const { data: users, isLoading, isError, error } = useUsersList();
   const { data: stats } = useUserStatistics();
   const deleteUser = useDeleteUser();
+  const removeUser = useDeleteUserPermanent();
   const activateUser = useActivateUser();
   const deactivateUser = useDeactivateUser();
   const { toast } = useToast();
@@ -119,6 +120,14 @@ export function UsersManagementPage({
           setSelectedUsers(new Set());
         }
         toast({ title: confirmAction.label, tone: 'success' });
+      } else if (confirmAction.type === 'remove') {
+        if (confirmAction.userId) {
+          await removeUser.mutateAsync(confirmAction.userId);
+        } else {
+          await Promise.all(Array.from(selectedUsers).map((id) => removeUser.mutateAsync(id)));
+          setSelectedUsers(new Set());
+        }
+        toast({ title: confirmAction.label, tone: 'success' });
       } else if (confirmAction.type === 'activate') {
         if (confirmAction.userId) {
           await activateUser.mutateAsync(confirmAction.userId);
@@ -138,7 +147,7 @@ export function UsersManagementPage({
       toast({ title: msg, tone: 'danger' });
     }
     setConfirmAction(null);
-  }, [confirmAction, deleteUser, activateUser, deactivateUser, selectedUsers, toast]);
+  }, [confirmAction, deleteUser, removeUser, activateUser, deactivateUser, selectedUsers, toast]);
 
   const handleEditUser = (userId: string) => {
     const user = users?.find((u) => u.id === userId);
@@ -271,6 +280,11 @@ export function UsersManagementPage({
                         userId: id,
                         label: 'User deleted',
                       })}
+                      onRemove={(id) => setConfirmAction({
+                        type: 'remove',
+                        userId: id,
+                        label: 'User permanently removed',
+                      })}
                     />
                   ))}
                 </tbody>
@@ -297,8 +311,8 @@ export function UsersManagementPage({
             <Button variant="outline" onClick={() => setConfirmAction({ type: 'deactivate', label: `${selectedUsers.size} user(s) deactivated` })}>
               Deactivate
             </Button>
-            <Button variant="danger" onClick={() => setConfirmAction({ type: 'delete', label: `${selectedUsers.size} user(s) deleted` })}>
-              Remove
+            <Button variant="danger" onClick={() => setConfirmAction({ type: 'remove', label: `${selectedUsers.size} user(s) permanently removed` })}>
+              Remove permanently
             </Button>
           </div>
         </div>
@@ -307,11 +321,13 @@ export function UsersManagementPage({
       {confirmAction && (
         <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} title="Confirm Action" size="sm">
           <p className="text-body text-text-secondary">
-            Are you sure you want to {confirmAction.type === 'delete' ? 'delete' : confirmAction.type === 'activate' ? 'activate' : 'deactivate'} {confirmAction.userId ? 'this user' : `${selectedUsers.size} user(s)`}?
+            {confirmAction.type === 'remove'
+              ? `This will permanently remove ${confirmAction.userId ? 'this user' : `${selectedUsers.size} user(s)`} from the database. This action cannot be undone.`
+              : `Are you sure you want to ${confirmAction.type === 'delete' ? 'delete' : confirmAction.type === 'activate' ? 'activate' : 'deactivate'} ${confirmAction.userId ? 'this user' : `${selectedUsers.size} user(s)`}?`}
           </p>
           <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-border-subtle">
             <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
-            <Button variant={confirmAction.type === 'delete' ? 'danger' : 'primary'} onClick={handleConfirmAction}>
+            <Button variant={confirmAction.type === 'delete' || confirmAction.type === 'remove' ? 'danger' : 'primary'} onClick={handleConfirmAction}>
               Confirm
             </Button>
           </div>
@@ -358,6 +374,7 @@ function UserTableRow({
   onEdit,
   onToggleStatus,
   onDelete,
+  onRemove,
 }: {
   user: UserResponse;
   isSelected: boolean;
@@ -366,6 +383,7 @@ function UserTableRow({
   onEdit: () => void;
   onToggleStatus: (id: string, action: 'activate' | 'deactivate') => void;
   onDelete: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const statusColor: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
     ACTIVE: 'success',
@@ -389,6 +407,7 @@ function UserTableRow({
     { label: 'Reset Password', icon: <RotateCcw className="h-4 w-4" /> },
     { divider: true },
     { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, danger: true, onClick: () => onDelete(user.id) },
+    { label: 'Remove permanently', icon: <Trash2 className="h-4 w-4" />, danger: true, onClick: () => onRemove(user.id) },
   ];
 
   return (
