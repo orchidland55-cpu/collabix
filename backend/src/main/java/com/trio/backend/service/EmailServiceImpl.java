@@ -6,14 +6,17 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
 import java.io.UnsupportedEncodingException;
+import java.util.List;
 
 /**
  * Implementation of the service d'sending d'emails de Collabix.
@@ -50,6 +53,16 @@ public class EmailServiceImpl implements EmailService {
 
     private final MailProperties mailProperties;
 
+    private final RestClient restClient;
+
+    private static final String BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+
+    private record BrevoSender(String email, String name) {}
+
+    private record BrevoRecipient(String email) {}
+
+    private record BrevoEmailRequest(BrevoSender sender, List<BrevoRecipient> to, String subject, String htmlContent) {}
+
     /**
      * Envoie un email of activation de compte Ã  the user.
      *
@@ -74,21 +87,11 @@ public class EmailServiceImpl implements EmailService {
 
         try {
 
-            MimeMessage message = mailSender.createMimeMessage();
-
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
-            helper.setTo(user.getEmail());
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
-
-            mailSender.send(message);
+            sendEmail(user.getEmail(), subject, htmlContent);
 
             log.info("Account activation email sent successfully to: {}", user.getEmail());
 
-        } catch (MessagingException | UnsupportedEncodingException e) {
-            log.error("Failed to build account activation email for: {}", user.getEmail(), e);
-        } catch (MailException e) {
+        } catch (Exception e) {
             log.error("Failed to send account activation email to: {}", user.getEmail(), e);
         }
     }
@@ -118,23 +121,53 @@ helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
 
         try {
 
-            MimeMessage message = mailSender.createMimeMessage();
-
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
-            helper.setTo(user.getEmail());
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
-
-            mailSender.send(message);
+            sendEmail(user.getEmail(), subject, htmlContent);
 
             log.info("Password reset email sent successfully to: {}", user.getEmail());
 
-        } catch (MessagingException | UnsupportedEncodingException e) {
-            log.error("Failed to build password reset email for: {}", user.getEmail(), e);
-        } catch (MailException e) {
+        } catch (Exception e) {
             log.error("Failed to send password reset email to: {}", user.getEmail(), e);
         }
+    }
+
+    /**
+     * Routes the email: via the Brevo HTTP API when BREVO_API_KEY is set,
+     * otherwise via the configured SMTP (JavaMailSender).
+     */
+    private void sendEmail(String to, String subject, String htmlContent) throws MessagingException, UnsupportedEncodingException {
+        if (mailProperties.getBrevoApiKey() != null && !mailProperties.getBrevoApiKey().isBlank()) {
+            sendViaBrevo(to, subject, htmlContent);
+        } else {
+            sendViaSmtp(to, subject, htmlContent);
+        }
+    }
+
+    private void sendViaSmtp(String to, String subject, String htmlContent) throws MessagingException, UnsupportedEncodingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(htmlContent, true);
+        mailSender.send(message);
+    }
+
+    private void sendViaBrevo(String to, String subject, String htmlContent) {
+        BrevoEmailRequest request = new BrevoEmailRequest(
+                new BrevoSender(mailProperties.getFrom(), mailProperties.getFromName()),
+                List.of(new BrevoRecipient(to)),
+                subject,
+                htmlContent
+        );
+        restClient.post()
+                .uri(BREVO_API_URL)
+                .header("api-key", mailProperties.getBrevoApiKey())
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .toBodilessEntity();
+        log.debug("Brevo API accepted email to: {}", to);
     }
 
     /**
@@ -238,21 +271,11 @@ helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
 
         try {
 
-            MimeMessage message = mailSender.createMimeMessage();
+            sendEmail(user.getEmail(), subject, htmlContent);
 
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(mailProperties.getFrom(), mailProperties.getFromName());
-            helper.setTo(user.getEmail());
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
+            log.info("Notification email sent successfully to: {} — title: {}", user.getEmail(), notificationTitle);
 
-            mailSender.send(message);
-
-            log.info("Notification email sent successfully to: {} â€” title: {}", user.getEmail(), notificationTitle);
-
-        } catch (MessagingException | UnsupportedEncodingException e) {
-            log.error("Failed to build notification email for: {}", user.getEmail(), e);
-        } catch (MailException e) {
+        } catch (Exception e) {
             log.error("Failed to send notification email to: {}", user.getEmail(), e);
         }
     }

@@ -44,4 +44,12 @@ public class MailProperties {
      * <p>Environment variable: {@code MAIL_FROM_NAME}</p>
      */
     private String fromName;
+
+    /**
+     * Brevo REST API key (xkeysib-...). When set, emails are sent via the
+     * Brevo HTTP API (port 443) instead of SMTP, bypassing any egress SMTP
+     * restrictions.
+     * <p>Environment variable: {@code BREVO_API_KEY}</p>
+     */
+    private String brevoApiKey;
 }
