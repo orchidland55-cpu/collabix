@@ -26,6 +26,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
