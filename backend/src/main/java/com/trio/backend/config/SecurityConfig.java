@@ -180,7 +180,15 @@ public class SecurityConfig {
                 "http://localhost:3000"
         ));
         if (!additionalAllowedOrigins.isBlank()) {
-            origins.addAll(Arrays.asList(additionalAllowedOrigins.split(",")));
+            Arrays.stream(additionalAllowedOrigins.split(","))
+                    .map(String::trim)
+                    .filter(origin -> !origin.isEmpty())
+                    .forEach(origins::add);
+        } else {
+            origins.addAll(Arrays.asList(
+                    "https://collabix-chi.vercel.app",
+                    "https://collabix-production-eead.up.railway.app"
+            ));
         }
         configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(Arrays.asList(
