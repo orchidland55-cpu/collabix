@@ -262,8 +262,10 @@ export interface UpdateDepartmentRequest {
   status?: string;
 }
 
-export function listDepartments(workspaceId: string) {
-  return apiClient.get<DepartmentSummary[]>(`/workspaces/${workspaceId}/departments`);
+export function listDepartments(workspaceId: string, includeArchived = false) {
+  return apiClient.get<DepartmentSummary[]>(`/workspaces/${workspaceId}/departments`, {
+    params: includeArchived ? { includeArchived: true } : undefined,
+  });
 }
 
 export function getDepartmentById(workspaceId: string, departmentId: string) {
@@ -276,6 +278,18 @@ export function createDepartment(workspaceId: string, data: CreateDepartmentRequ
 
 export function updateDepartment(workspaceId: string, departmentId: string, data: UpdateDepartmentRequest) {
   return apiClient.put<DepartmentResponse>(`/workspaces/${workspaceId}/departments/${departmentId}`, data);
+}
+
+export function archiveDepartment(workspaceId: string, departmentId: string) {
+  return apiClient.delete<void>(`/workspaces/${workspaceId}/departments/${departmentId}`);
+}
+
+export function deleteDepartmentPermanently(workspaceId: string, departmentId: string) {
+  return apiClient.delete<void>(`/workspaces/${workspaceId}/departments/${departmentId}/permanent`);
+}
+
+export function restoreDepartment(workspaceId: string, departmentId: string) {
+  return apiClient.put<DepartmentResponse>(`/workspaces/${workspaceId}/departments/${departmentId}/restore`);
 }
 
 /* ============================================================

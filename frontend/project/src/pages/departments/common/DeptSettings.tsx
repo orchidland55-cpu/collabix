@@ -7,14 +7,17 @@ import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { useToast } from '../../../components/ui/Toast';
 import { useDepartmentDetail, useUpdateDepartment } from '../../../services/department-hooks';
-import { Settings as SettingsIcon, Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Can } from '../../../pages/auth';
+import { Settings as SettingsIcon, Shield, AlertCircle, CheckCircle2, Archive, Trash2 } from 'lucide-react';
+import { DepartmentModal, type DepartmentModalState } from '../DepartmentModals';
 
-export function DeptSettings({ wsId, deptId }: { wsId?: string; deptId?: string }) {
+export function DeptSettings({ wsId, deptId, onRemoved }: { wsId?: string; deptId?: string; onRemoved?: () => void }) {
   const { toast } = useToast();
   const { data: dept, isLoading, isError } = useDepartmentDetail(wsId, deptId);
   const updateDepartment = useUpdateDepartment(wsId, deptId);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState<DepartmentModalState>(null);
 
   useEffect(() => {
     if (dept?.name) setName(dept.name);
@@ -111,6 +114,66 @@ export function DeptSettings({ wsId, deptId }: { wsId?: string; deptId?: string 
           </div>
         </CardBody>
       </Card>
+
+      {dept && (
+        <Can permission="DEPARTMENT_DELETE">
+          <Card className="border-danger-200 dark:border-danger-500/30">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-danger-50 text-danger-600 dark:bg-danger-100 dark:text-danger-500">
+                  <Trash2 className="h-4 w-4" />
+                </span>
+                <div>
+                  <CardTitle className="text-danger-600 dark:text-danger-400">Danger Zone</CardTitle>
+                  <CardDescription>Irreversible department actions</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardBody className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border-subtle">
+                <div>
+                  <p className="text-caption font-medium text-text-primary">
+                    {dept.status === 'ACTIVE' ? 'Archive this department' : 'This department is archived'}
+                  </p>
+                  <p className="text-2xs text-text-tertiary">
+                    {dept.status === 'ACTIVE'
+                      ? 'Move the department to archived status. It can be restored later from the Departments list.'
+                      : 'Restore it to active status from the Departments list.'}
+                  </p>
+                </div>
+                {dept.status === 'ACTIVE' && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    leftIcon={<Archive className="h-4 w-4" />}
+                    onClick={() => setModal({ kind: 'archive', dept: { id: dept.id, name: dept.name, status: dept.status } })}
+                  >
+                    Archive Department
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border-subtle">
+                <div>
+                  <p className="text-caption font-medium text-text-primary">Delete this department permanently</p>
+                  <p className="text-2xs text-text-tertiary">
+                    Permanently removes the department from the database. This cannot be undone and will fail if the department still contains teams, projects, or other records.
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  leftIcon={<Trash2 className="h-4 w-4" />}
+                  onClick={() => setModal({ kind: 'delete', dept: { id: dept.id, name: dept.name, status: dept.status } })}
+                >
+                  Delete Permanently
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </Can>
+      )}
+
+      <DepartmentModal state={modal} onClose={() => setModal(null)} onSuccess={onRemoved} />
     </div>
   );
 }

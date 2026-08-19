@@ -15,13 +15,15 @@ public interface DepartmentService {
 
     DepartmentResponse getById(UUID workspaceId, UUID departmentId);
 
-    List<DepartmentSummaryResponse> listByWorkspace(UUID workspaceId);
+    List<DepartmentSummaryResponse> listByWorkspace(UUID workspaceId, boolean includeArchived);
 
     DepartmentDetailsResponse getDetails(UUID workspaceId, UUID departmentId);
 
     DepartmentResponse update(UUID workspaceId, UUID departmentId, UpdateDepartmentRequest request);
 
     void delete(UUID workspaceId, UUID departmentId);
+
+    void deletePermanently(UUID workspaceId, UUID departmentId);
 
     DepartmentResponse restore(UUID workspaceId, UUID departmentId);
 }

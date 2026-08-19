@@ -123,7 +123,7 @@ export function DepartmentDetailPage({ departmentId, onBack }: { departmentId: s
       documents: deptType === 'hr' ? <HrDocumentsTab wsId={wsId} deptId={departmentId} /> : <DeptDocuments wsId={wsId} deptId={departmentId} />,
       reports: deptType === 'hr' ? <HrReportsTab wsId={wsId} deptId={departmentId} /> : <DeptReports wsId={wsId} deptId={departmentId} />,
       activity: <DeptActivity wsId={wsId} deptId={departmentId} />,
-      settings: <DeptSettings wsId={wsId} deptId={departmentId} />,
+      settings: <DeptSettings wsId={wsId} deptId={departmentId} onRemoved={onBack} />,
     };
 
     if (shared[activeTab]) return shared[activeTab];

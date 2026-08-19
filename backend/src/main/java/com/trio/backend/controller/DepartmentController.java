@@ -89,7 +89,8 @@ public class DepartmentController {
     @Operation(
             summary = "List departments",
             security = @SecurityRequirement(name = "bearer"),
-            description = "Returns the list des departments active of the workspace." )
+            description = "Returns the list des departments of the workspace. " +
+                    "Active only by default; pass includeArchived=true to also include archived departments." )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
@@ -98,9 +99,10 @@ public class DepartmentController {
             )
     })
     public ApiResponse<List<DepartmentSummaryResponse>> listByWorkspace(
-            @PathVariable UUID workspaceId
+            @PathVariable UUID workspaceId,
+            @RequestParam(defaultValue = "false") boolean includeArchived
     ) {
-        return ApiResponse.success("Departments resorteved successfully.", departmentService.listByWorkspace(workspaceId));
+        return ApiResponse.success("Departments resorteved successfully.", departmentService.listByWorkspace(workspaceId, includeArchived));
     }
 
     @GetMapping("/{departmentId}/details")
@@ -174,11 +176,11 @@ public class DepartmentController {
 
     @DeleteMapping("/{departmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DEPARTMENT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DEPARTMENT_DELETE')")
     @Operation(
-            summary = "Delete a department",
+            summary = "Archive a department",
             security = @SecurityRequirement(name = "bearer"),
-            description = "Supprime (soft delete) un department. Refusaled if the department contains active teams." )
+            description = "Supprime (soft delete) un department. Refused if the department contains active teams." )
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Department deleted"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
@@ -191,6 +193,28 @@ public class DepartmentController {
             @PathVariable UUID departmentId
     ) {
         departmentService.delete(workspaceId, departmentId);
+    }
+
+    @DeleteMapping("/{departmentId}/permanent")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DEPARTMENT_DELETE')")
+    @Operation(
+            summary = "Permanently delete a department",
+            security = @SecurityRequirement(name = "bearer"),
+            description = "Permanently removes a department from the database. This is irreversible. " +
+                    "Refused if the department still contains related business records (teams, projects, HR data, etc.).")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Department permanently deleted"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User without permission"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Department not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Department still contains related records")
+    })
+    public void deletePermanently(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId
+    ) {
+        departmentService.deletePermanently(workspaceId, departmentId);
     }
 }
 

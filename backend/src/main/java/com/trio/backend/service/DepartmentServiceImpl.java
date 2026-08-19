@@ -25,6 +25,7 @@ import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
 
 import com.trio.backend.security.user.CustomUserDetails;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -32,9 +33,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -69,6 +71,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final UserRepository userRepository;
     private final DepartmentMapper departmentMapper;
+    private final EntityManager entityManager;
 
 
     /**
@@ -139,12 +142,15 @@ public class DepartmentServiceImpl implements DepartmentService {
      */
     @Override
     @Transactional(readOnly = true)
-    public List<DepartmentSummaryResponse> listByWorkspace(UUID workspaceId) {
+    public List<DepartmentSummaryResponse> listByWorkspace(UUID workspaceId, boolean includeArchived) {
 
         assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
 
-        return departmentRepository.findAllByWorkspace_IdAndStatus(workspaceId, WorkspaceStatus.ACTIVE)
-                .stream()
+        List<Department> departments = includeArchived
+                ? departmentRepository.findAllByWorkspace_Id(workspaceId)
+                : departmentRepository.findAllByWorkspace_IdAndStatus(workspaceId, WorkspaceStatus.ACTIVE);
+
+        return departments.stream()
                 .map(d -> {
                     DepartmentSummaryResponse r = departmentMapper.toSummary(d);
                     r.setTeamCount(teamRepository.countByDepartment_IdAndStatus(d.getId(), WorkspaceStatus.ACTIVE));
@@ -258,7 +264,7 @@ public class DepartmentServiceImpl implements DepartmentService {
 
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertWorkspaceOwner(workspaceId, userId);
+        assertWorkspaceAdminOrOwner(workspaceId, userId);
 
         Department department = departmentRepository.findByIdAndWorkspace_Id(departmentId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found."));
@@ -276,6 +282,80 @@ public class DepartmentServiceImpl implements DepartmentService {
         department.setStatus(WorkspaceStatus.ARCHIVED);
         departmentRepository.save(department);
 
+    }
+
+    /**
+     * Hard delete : supprime physiquement le Department de la base de donnÃƒÂ©es.
+     *
+     * <p>Cette opÃƒÂ©ration est irrÃƒÂ©versible. Elle respecte les contraintes FK
+     * existantes : aucune cascade aveugle. Si des enregistrements mÃƒÂ©tier dÃƒÂ©pendent
+     * encore du Department (teams, projets, ressources HR, sprints, campagnes,
+     * audits, rapports, handovers, modÃƒÂ¨les IA...), la suppression est refusÃƒÂ©e.</p>
+     *
+     * <p>Les rÃƒÂ©fÃƒÂ©rences optionnelles (users.primary_department_id, announcements,
+     * conversations, alerts, ai_history) sont gÃƒÂ©rÃƒÂ©es par la base via ON DELETE SET NULL.</p>
+     *
+     * @param workspaceId the ID of the workspace
+     * @param departmentId l'identifiant du department
+     */
+    @Override
+    public void deletePermanently(UUID workspaceId, UUID departmentId) {
+
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        assertWorkspaceAdminOrOwner(workspaceId, userId);
+
+        Department department = departmentRepository.findByIdAndWorkspace_Id(departmentId, workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found."));
+
+        Map<String, Long> dependents = countDependents(departmentId);
+
+        if (!dependents.isEmpty()) {
+            String labels = String.join(", ", dependents.keySet());
+            throw new ConflictException("Cannot permanently delete department: it still contains " + labels
+                    + ". Archive the department or move its data first.");
+        }
+
+        departmentRepository.delete(department);
+    }
+
+    /**
+     * Counts business records that would block a hard delete of the department.
+     *
+     * <p>Only records backed by a non-null FK to departments(id) with NO ACTION
+     * (or an ON DELETE CASCADE that would silently erase owned data) are guarded.
+     * Optional references with ON DELETE SET NULL (users, announcements,
+     * conversations, alerts, ai_history) are intentionally not guarded: the
+     * database detaches them automatically.</p>
+     *
+     * @param departmentId the department id
+     * @return map of friendly label to record count, empty when safe to delete
+     */
+    private Map<String, Long> countDependents(UUID departmentId) {
+        Map<String, Long> result = new LinkedHashMap<>();
+        countDependents(result, departmentId, "teams", "Team");
+        countDependents(result, departmentId, "projects", "Project");
+        countDependents(result, departmentId, "employees", "Employee");
+        countDependents(result, departmentId, "candidates", "Candidate");
+        countDependents(result, departmentId, "sprints", "Sprint");
+        countDependents(result, departmentId, "marketing campaigns", "MarketingCampaign");
+        countDependents(result, departmentId, "security audits", "SecurityAudit");
+        countDependents(result, departmentId, "analytics reports", "AnalyticsReport");
+        countDependents(result, departmentId, "executive reports", "ExecutiveReport");
+        countDependents(result, departmentId, "handover journals", "HandoverJournal");
+        countDependents(result, departmentId, "handover entries", "HandoverEntry");
+        countDependents(result, departmentId, "AI models", "AIModel");
+        return result;
+    }
+
+    private void countDependents(Map<String, Long> result, UUID departmentId, String label, String entityName) {
+        Long count = (Long) entityManager.createQuery(
+                        "select count(e) from " + entityName + " e where e.department.id = :deptId")
+                .setParameter("deptId", departmentId)
+                .getSingleResult();
+        if (count != null && count > 0) {
+            result.put(label, count);
+        }
     }
 
     // ============================================================================
