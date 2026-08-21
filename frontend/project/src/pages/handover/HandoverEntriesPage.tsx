@@ -11,8 +11,8 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { PageLoader } from '../../components/ui/PageLoader';
 import { useToast } from '../../components/ui/Toast';
 import { useWorkspaceId } from '../../hooks/useWorkspaceId';
-import { useDepartmentList } from '../../services/department-hooks';
 import { useProjectList } from '../../services/project-hooks';
+import { useAuth } from '../../lib/auth-context';
 import {
   useMyHandoverEntries,
   useCreateHandoverEntry,
@@ -245,9 +245,9 @@ export function HandoverEntriesPage() {
 
 function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
-  const { data: departments } = useDepartmentList(workspaceId);
-  const [departmentId, setDepartmentId] = useState('');
-  const { data: projectsPage } = useProjectList(workspaceId, departmentId || undefined);
+  const { user } = useAuth();
+  const userDepartmentId = user?.departmentId ?? '';
+  const { data: projectsPage } = useProjectList(workspaceId, userDepartmentId || undefined);
   const projects = projectsPage?.content ?? [];
 
   const createMutation = useCreateHandoverEntry(workspaceId);
@@ -283,7 +283,7 @@ function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onC
 
   const validate = () => {
     const next: Record<string, string> = {};
-    if (!departmentId) next.departmentId = 'Select a department';
+    if (!userDepartmentId) next.departmentId = 'Your department could not be determined';
     if (!form.projectId) next.projectId = 'Select a project';
     if (!form.entryDate) next.entryDate = 'Select a date';
     if (!form.shift) next.shift = 'Select a shift';
@@ -292,7 +292,7 @@ function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onC
   };
 
   const buildPayload = () => ({
-    departmentId,
+    departmentId: userDepartmentId,
     projectId: form.projectId,
     shift: form.shift,
     entryDate: form.entryDate || undefined,
@@ -345,29 +345,26 @@ function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onC
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Select
-            label="Department"
-            value={departmentId}
-            onChange={(e) => {
-              setDepartmentId(e.target.value);
-              setField('projectId', '');
-            }}
-            invalid={!!errors.departmentId}
-            errorText={errors.departmentId}
-            options={[
-              { value: '', label: 'Select department' },
-              ...(departments ?? []).map((d) => ({ value: d.id, label: d.name })),
-            ]}
-          />
+          {!userDepartmentId ? (
+            <div className="flex items-end">
+              <p className="text-caption text-danger-600">Your department could not be determined. Contact support.</p>
+            </div>
+          ) : (
+            <Input
+              label="Department"
+              value={userDepartmentId}
+              disabled
+            />
+          )}
           <Select
             label="Project"
             value={form.projectId}
             onChange={(e) => setField('projectId', e.target.value)}
             invalid={!!errors.projectId}
             errorText={errors.projectId}
-            disabled={!departmentId}
+            disabled={!userDepartmentId}
             options={[
-              { value: '', label: departmentId ? 'Select project' : 'Select a department first' },
+              { value: '', label: userDepartmentId ? 'Select project' : 'No department available' },
               ...projects.map((p) => ({ value: p.id, label: p.name })),
             ]}
           />

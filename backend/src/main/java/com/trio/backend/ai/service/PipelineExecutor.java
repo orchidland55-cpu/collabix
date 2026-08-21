@@ -9,12 +9,14 @@ import com.trio.backend.ai.enums.AIProvider;
 import com.trio.backend.ai.enums.AITask;
 import com.trio.backend.ai.exception.AIProviderException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PipelineExecutor {
 
     private final GeminiService geminiService;
@@ -59,7 +61,7 @@ public class PipelineExecutor {
             AITask task,
             String input,
             Map<String, Object> context,
-            List<String> prompts,
+            PromptBuilder promptBuilder,
             UUID userId,
             UUID workspaceId,
             UUID departmentId) {
@@ -68,16 +70,31 @@ public class PipelineExecutor {
         List<AIProvider> pipeline = getPipeline(task);
         List<AIPipelineResult.ProviderExecution> executions = new ArrayList<>();
         String previousOutput = null;
+        RuntimeException lastFailure = null;
 
         for (int i = 0; i < pipeline.size(); i++) {
             AIProvider provider = pipeline.get(i);
-            String promptText = prompts.get(i);
+            String promptText = promptBuilder.build(task, provider, input, previousOutput, context);
 
             AITextRequest textRequest = new AITextRequest();
             textRequest.setPrompt(promptText);
 
             long stepStart = System.currentTimeMillis();
-            AITextResponse providerResponse = callProvider(provider, textRequest, userId, workspaceId, departmentId);
+            AITextResponse providerResponse;
+            try {
+                providerResponse = callProvider(provider, textRequest, userId, workspaceId, departmentId);
+            } catch (RuntimeException ex) {
+                long stepTime = System.currentTimeMillis() - stepStart;
+                lastFailure = ex;
+                log.warn("AI provider {} failed for task {}: {}", provider, task, ex.getMessage());
+                executions.add(AIPipelineResult.ProviderExecution.builder()
+                        .provider(provider)
+                        .prompt(promptText)
+                        .executionTime(stepTime)
+                        .success(false)
+                        .build());
+                continue;
+            }
             long stepTime = System.currentTimeMillis() - stepStart;
 
             AIHistoryRequest historyRequest = buildHistoryRequest(
@@ -101,6 +118,12 @@ public class PipelineExecutor {
         }
 
         long totalTime = System.currentTimeMillis() - totalStart;
+
+        if (executions.stream().noneMatch(AIPipelineResult.ProviderExecution::isSuccess)) {
+            throw lastFailure != null
+                    ? lastFailure
+                    : new AIProviderException("All AI providers failed for task: " + task);
+        }
 
         return AIPipelineResult.builder()
                 .finalResponse(previousOutput)

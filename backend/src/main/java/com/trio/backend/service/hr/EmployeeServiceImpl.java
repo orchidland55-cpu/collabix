@@ -100,7 +100,8 @@ public class EmployeeServiceImpl implements EmployeeService {
         Employee manager = null;
         if (request.getManagerId() != null) {
             manager = employeeRepository.findByIdAndDepartment_Id(request.getManagerId(), departmentId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Manager not found."));
+                    .orElseThrow(() -> new BadRequestException(
+                            "Manager not found. Select an existing employee from this department as manager."));
             if (manager.getEmploymentStatus() != EmploymentStatus.ACTIVE) {
                 throw new BadRequestException("Manager is not active.");
             }
@@ -243,7 +244,8 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         if (request.getManagerId() != null) {
             Employee manager = employeeRepository.findByIdAndDepartment_Id(request.getManagerId(), departmentId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Manager not found."));
+                    .orElseThrow(() -> new BadRequestException(
+                            "Manager not found. Select an existing employee from this department as manager."));
             if (manager.getEmploymentStatus() != EmploymentStatus.ACTIVE) {
                 throw new BadRequestException("Manager is not active.");
             }

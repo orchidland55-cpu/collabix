@@ -5,7 +5,6 @@ import com.trio.backend.ai.dto.request.AIExecutionRequest;
 import com.trio.backend.ai.dto.response.AIExecutionResponse;
 import com.trio.backend.ai.enums.AIProvider;
 import com.trio.backend.ai.enums.AITask;
-import com.trio.backend.ai.exception.AIProviderException;
 import com.trio.backend.ai.service.AIOrchestratorService;
 import com.trio.backend.ai.service.PipelineExecutor;
 import com.trio.backend.ai.service.PromptBuilder;
@@ -13,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,19 +33,8 @@ public class AIOrchestratorServiceImpl implements AIOrchestratorService {
 
         List<AIProvider> pipeline = pipelineExecutor.getPipeline(task);
 
-        List<String> prompts = new ArrayList<>();
-        String previousOutput = null;
-
-        for (int i = 0; i < pipeline.size(); i++) {
-            AIProvider provider = pipeline.get(i);
-            String prompt = promptBuilder.build(task, provider, input, previousOutput, request.getContext());
-            prompts.add(prompt);
-        }
-
-        previousOutput = null;
-
         AIPipelineResult result = pipelineExecutor.execute(
-                task, input, request.getContext(), prompts,
+                task, input, request.getContext(), promptBuilder,
                 userId, workspaceId, departmentId
         );
 

@@ -13,12 +13,41 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useToast } from '../../../components/ui/Toast';
 import { useEmployeesList, useEmployeeStats, useCreateEmployee, useUpdateEmployee, useDeleteEmployee } from '../../../services/employee-hooks';
 import type { EmployeeResponse, CreateEmployeeRequest, UpdateEmployeeRequest } from '../../../services/employee-service';
-import { useUsersList } from '../../../services/admin-hooks';
 import { useTeamsByDepartment } from '../../../services/admin-hooks';
-import { CONTRACT_TYPES, EMPLOYMENT_STATUSES, contractTypeLabel, contractTypeColor, employmentStatusLabel, employmentStatusColor, formatDate } from './hr-constants';
+import { CONTRACT_TYPES, EMPLOYMENT_STATUSES, contractTypeLabel, contractTypeColor, employmentStatusLabel, employmentStatusColor, formatDate, isActiveEmployee } from './hr-constants';
 import { EmployeeDetailModal } from './EmployeeDetailModal';
 
 type EmployeeForm = CreateEmployeeRequest & { employmentStatus?: string };
+
+function buildCreatePayload(form: EmployeeForm): CreateEmployeeRequest {
+  return {
+    firstName: form.firstName.trim(),
+    lastName: form.lastName.trim(),
+    email: form.email.trim(),
+    phone: form.phone?.trim() || undefined,
+    position: form.position.trim(),
+    employmentType: form.employmentType,
+    startDate: form.startDate,
+    teamId: form.teamId || undefined,
+    managerId: form.managerId || undefined,
+    candidateId: form.candidateId || undefined,
+  };
+}
+
+function buildUpdatePayload(form: EmployeeForm): UpdateEmployeeRequest {
+  return {
+    firstName: form.firstName.trim(),
+    lastName: form.lastName.trim(),
+    email: form.email.trim(),
+    phone: form.phone?.trim() || undefined,
+    position: form.position.trim(),
+    teamId: form.teamId || undefined,
+    managerId: form.managerId || undefined,
+    employmentType: form.employmentType,
+    employmentStatus: form.employmentStatus,
+    startDate: form.startDate,
+  };
+}
 
 export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string }) {
   const [search, setSearch] = useState('');
@@ -39,12 +68,13 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
   const updateEmp = useUpdateEmployee(wsId, deptId, editing?.id ?? '');
   const deactivateEmp = useUpdateEmployee(wsId, deptId, viewing?.id ?? '');
   const deleteEmp = useDeleteEmployee(wsId, deptId);
-  const { data: users } = useUsersList();
   const { data: teams } = useTeamsByDepartment(wsId, deptId);
 
   const employees = data?.content ?? [];
   const totalPages = data?.page?.totalPages ?? 1;
-  const managerOptions = (users ?? []).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }));
+  const managerOptions = employees
+    .filter((e) => isActiveEmployee(e.employmentStatus) && e.id !== editing?.id)
+    .map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }));
   const teamOptions = (teams ?? []).filter((t) => t.status === 'ACTIVE').map((t) => ({ value: t.id, label: t.name }));
 
   const filtered = employees.filter((e) => {
@@ -68,19 +98,14 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
 
   const handleSubmit = () => {
     if (editing) {
-      const payload: UpdateEmployeeRequest = {
-        firstName: form.firstName, lastName: form.lastName, email: form.email, phone: form.phone || undefined,
-        position: form.position, teamId: form.teamId || undefined, managerId: form.managerId || undefined,
-        employmentType: form.employmentType, employmentStatus: form.employmentStatus, startDate: form.startDate,
-      };
-      updateEmp.mutate(payload, {
+      updateEmp.mutate(buildUpdatePayload(form), {
         onSuccess: () => { toast({ title: 'Employee updated', tone: 'success' }); setShowForm(false); },
-        onError: () => toast({ title: 'Failed to update employee', tone: 'danger' }),
+        onError: (err) => toast({ title: 'Failed to update employee', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
       });
     } else {
-      createEmp.mutate(form, {
+      createEmp.mutate(buildCreatePayload(form), {
         onSuccess: () => { toast({ title: 'Employee created', tone: 'success' }); setShowForm(false); },
-        onError: () => toast({ title: 'Failed to create employee', tone: 'danger' }),
+        onError: (err) => toast({ title: 'Failed to create employee', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
       });
     }
   };
@@ -89,7 +114,7 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
     if (!window.confirm(`Delete employee "${e.firstName} ${e.lastName}"? This cannot be undone.`)) return;
     deleteEmp.mutate(e.id, {
       onSuccess: () => toast({ title: 'Employee deleted', tone: 'success' }),
-      onError: () => toast({ title: 'Failed to delete employee', tone: 'danger' }),
+      onError: (err) => toast({ title: 'Failed to delete employee', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
     });
   };
 
@@ -97,7 +122,7 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
     if (!window.confirm(`Deactivate "${e.firstName} ${e.lastName}"? Their employment status will be set to Suspended.`)) return;
     deactivateEmp.mutate({ employmentStatus: 'SUSPENDED' }, {
       onSuccess: () => { toast({ title: 'Employee deactivated', tone: 'success' }); setViewing(null); },
-      onError: () => toast({ title: 'Failed to deactivate employee', tone: 'danger' }),
+      onError: (err) => toast({ title: 'Failed to deactivate employee', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
     });
   };
 
@@ -164,7 +189,9 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
               options={EMPLOYMENT_STATUSES.map((s) => ({ value: s, label: employmentStatusLabel[s] }))} />
           )}
           <Select label="Manager" value={form.managerId ?? ''} onChange={(e) => setForm({ ...form, managerId: e.target.value })}
-            options={[{ value: '', label: 'No manager' }, ...managerOptions]} />
+            options={[{ value: '', label: 'No manager' }, ...managerOptions]}
+            helperText={managerOptions.length === 0 ? 'Add employees first to assign a manager.' : undefined}
+          />
           <Select label="Team" value={form.teamId ?? ''} onChange={(e) => setForm({ ...form, teamId: e.target.value })}
             options={[{ value: '', label: 'No team' }, ...teamOptions]} />
         </div>

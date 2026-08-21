@@ -92,8 +92,14 @@ export const employmentStatusColor: Record<string, string> = {
 
 const INACTIVE_EMPLOYMENT_STATUSES = ['RESIGNED', 'TERMINATED', 'RETIRED'];
 
+/** Employees available for HR workflows (matches backend review eligibility). */
+export function isReviewEligibleEmployee(status: string | undefined | null): boolean {
+  if (!status) return true;
+  return !INACTIVE_EMPLOYMENT_STATUSES.includes(status);
+}
+
 export function isActiveEmployee(status: string | undefined | null): boolean {
-  return typeof status === 'string' && !INACTIVE_EMPLOYMENT_STATUSES.includes(status);
+  return isReviewEligibleEmployee(status);
 }
 
 export const SKILL_CATEGORIES = [

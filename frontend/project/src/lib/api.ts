@@ -15,19 +15,21 @@ async function doRefresh(): Promise<{ accessToken: string; refreshToken: string 
   const stored = localStorage.getItem('collabix_auth');
   const refreshToken = stored ? JSON.parse(stored).refreshToken : null;
   if (!refreshToken) return null;
-  const { data } = await axios.post(
+  const { data: envelope } = await axios.post(
     `${api.defaults.baseURL}/auth/refresh`,
     { refreshToken },
   );
+  // Backend wraps response in ApiResponse, unwrap it
+  const inner = envelope?.data ?? envelope;
   const storedState = localStorage.getItem('collabix_auth');
   if (storedState) {
     const authState = JSON.parse(storedState);
-    authState.accessToken = data.accessToken;
-    authState.refreshToken = data.refreshToken;
+    authState.accessToken = inner.accessToken;
+    authState.refreshToken = inner.refreshToken;
     localStorage.setItem('collabix_auth', JSON.stringify(authState));
     emitAuthEvent({ type: 'token-refreshed' });
   }
-  return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  return { accessToken: inner.accessToken, refreshToken: inner.refreshToken };
 }
 
 async function refreshOrWait(): Promise<{ accessToken: string; refreshToken: string } | null> {
@@ -36,6 +38,42 @@ async function refreshOrWait(): Promise<{ accessToken: string; refreshToken: str
   }
   refreshPromise = doRefresh().finally(() => { refreshPromise = null; });
   return refreshPromise;
+}
+
+/* ---------- Helpers ---------- */
+
+/**
+ * Detect whether the response payload looks like a Spring Page
+ * (has `content`, `totalPages`, `number`, `size` at top level).
+ */
+function isSpringPage(obj: unknown): boolean {
+  return (
+    obj !== null &&
+    typeof obj === 'object' &&
+    'content' in (obj as Record<string, unknown>) &&
+    'totalPages' in (obj as Record<string, unknown>) &&
+    'number' in (obj as Record<string, unknown>) &&
+    'size' in (obj as Record<string, unknown>)
+  );
+}
+
+/**
+ * Convert a Spring Page JSON into the frontend's PageResponse format:
+ * { content: T[], page: { page, size, totalElements, totalPages, first, last, empty } }
+ */
+function toPageResponse<T>(page: Record<string, unknown>): PageResponse<T> {
+  return {
+    content: (page.content ?? []) as T[],
+    page: {
+      page: (page.number as number) ?? 0,
+      size: (page.size as number) ?? 20,
+      totalElements: (page.totalElements as number) ?? 0,
+      totalPages: (page.totalPages as number) ?? 0,
+      first: (page.first as boolean) ?? true,
+      last: (page.last as boolean) ?? true,
+      empty: (page.empty as boolean) ?? true,
+    },
+  };
 }
 
 /* ---------- Axios instance ---------- */
@@ -65,8 +103,16 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response: AxiosResponse<ApiResponse<unknown>>) => {
+    // Unwrap ApiResponse envelope: replace response.data with response.data.data
     if (response.data && 'success' in response.data) {
-      response.data = response.data.data as ApiResponse<unknown> & { data: unknown };
+      const unwrapped = (response.data as ApiResponse<unknown>).data;
+      if (unwrapped !== undefined && unwrapped !== null) {
+        response.data = unwrapped as unknown as ApiResponse<unknown>;
+      }
+    }
+    // Normalize Spring Page responses to { content, page } format
+    if (isSpringPage(response.data as unknown)) {
+      response.data = toPageResponse(response.data as unknown as Record<string, unknown>) as unknown as ApiResponse<unknown>;
     }
     return response;
   },
@@ -106,14 +152,19 @@ export interface NormalizedApiError {
   raw: unknown;
 }
 
-function normalizeError(error: AxiosError<ApiErrorResponse>): NormalizedApiError {
+function normalizeError(error: AxiosError<ApiErrorResponse>): Error & { normalized: NormalizedApiError } {
   const response = error.response;
-  return {
-    message: response?.data?.message ?? error.message ?? 'An unexpected error occurred',
+  const message = response?.data?.message ?? error.message ?? 'An unexpected error occurred';
+  const normalized: NormalizedApiError = {
+    message,
     status: response?.status ?? null,
     fieldErrors: response?.data?.errors ?? [],
     raw: error,
   };
+  // Attach the normalized error to the Error so handlers can read it uniformly
+  const wrapped = new Error(message) as Error & { normalized: NormalizedApiError };
+  wrapped.normalized = normalized;
+  return wrapped;
 }
 
 /* ---------- Typed API helpers ---------- */

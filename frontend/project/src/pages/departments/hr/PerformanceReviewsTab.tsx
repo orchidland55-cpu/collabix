@@ -14,8 +14,8 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useToast } from '../../../components/ui/Toast';
 import { usePerformanceReviewsList, usePerformanceReviewStats, useCreatePerformanceReview, useSubmitPerformanceReview, useApprovePerformanceReview, useRejectPerformanceReview, useArchivePerformanceReview, useDeletePerformanceReview } from '../../../services/performance-review-hooks';
 import type { CreatePerformanceReviewRequest } from '../../../services/performance-review-service';
-import { useEmployeesList } from '../../../services/employee-hooks';
-import { performanceLevelColor, reviewStatusColor, REVIEW_PERIODS, reviewPeriodLabel, formatEnum, isActiveEmployee } from './hr-constants';
+import { useDepartmentEmployeesForSelect } from '../../../services/employee-hooks';
+import { performanceLevelColor, reviewStatusColor, REVIEW_PERIODS, reviewPeriodLabel, formatEnum, isReviewEligibleEmployee, employmentStatusLabel } from './hr-constants';
 
 const EMPTY_SCORES = {
   objectivesAchieved: 0, technicalSkills: 0, softSkills: 0, punctualityAttendance: 0,
@@ -36,7 +36,11 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
 
   const { data, isLoading, isError } = usePerformanceReviewsList(wsId, deptId, page);
   const { data: stats } = usePerformanceReviewStats(wsId, deptId);
-  const { data: empData } = useEmployeesList(wsId, deptId, 0, 100);
+  const {
+    data: empData,
+    isLoading: employeesLoading,
+    refetch: refetchEmployees,
+  } = useDepartmentEmployeesForSelect(wsId, deptId);
   const createReview = useCreatePerformanceReview(wsId, deptId);
   const submitReview = useSubmitPerformanceReview(wsId, deptId);
   const approveReview = useApprovePerformanceReview(wsId, deptId);
@@ -47,7 +51,11 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
   const reviews = data?.content ?? [];
   const totalPages = data?.page?.totalPages ?? 1;
   const employees = empData?.content ?? [];
-  const activeEmployees = employees.filter((e) => isActiveEmployee(e.employmentStatus));
+  const reviewEmployees = employees.filter((e) => isReviewEligibleEmployee(e.employmentStatus));
+  const employeeOptions = reviewEmployees.map((e) => ({
+    value: e.id,
+    label: `${e.firstName} ${e.lastName}${e.employmentStatus ? ` — ${employmentStatusLabel[e.employmentStatus] ?? formatEnum(e.employmentStatus)}` : ''}`,
+  }));
 
   const filtered = reviews.filter((r) => {
     if (!search) return true;
@@ -58,12 +66,22 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
   const openCreate = () => {
     setForm({ employeeId: '', reviewerId: '', reviewPeriod: 'QUARTERLY', reviewDate: '', ...EMPTY_SCORES });
     setShowCreate(true);
+    void refetchEmployees();
   };
 
   const handleCreate = () => {
-    createReview.mutate(form, {
+    const payload: CreatePerformanceReviewRequest = {
+      ...form,
+      employeeId: form.employeeId,
+      reviewerId: form.reviewerId,
+      teamId: form.teamId || undefined,
+    };
+    createReview.mutate(payload, {
       onSuccess: () => { toast({ title: 'Review created', tone: 'success' }); setShowCreate(false); },
-      onError: (err) => toast({ title: 'Failed to create review', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
+      onError: (err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to create review';
+        toast({ title: 'Failed to create review', description: msg, tone: 'danger' });
+      },
     });
   };
 
@@ -214,9 +232,25 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
             <Select label="Employee" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-              options={[{ value: '', label: 'Select employee...' }, ...activeEmployees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]} />
+              disabled={employeesLoading}
+              options={[
+                { value: '', label: employeesLoading ? 'Loading employees...' : 'Select employee...' },
+                ...employeeOptions,
+              ]}
+              helperText={
+                !employeesLoading && reviewEmployees.length === 0
+                  ? 'No employees found. Add employees in the Employees tab first.'
+                  : undefined
+              }
+            />
             <Select label="Reviewer" value={form.reviewerId} onChange={(e) => setForm({ ...form, reviewerId: e.target.value })}
-              options={[{ value: '', label: 'Select reviewer...' }, ...activeEmployees.filter((e) => e.id !== form.employeeId).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]} />
+              disabled={employeesLoading}
+              options={[
+                { value: '', label: employeesLoading ? 'Loading employees...' : 'Select reviewer...' },
+                ...employeeOptions.filter((o) => o.value !== form.employeeId),
+              ]}
+              helperText="Reviewer must be an existing employee in this department."
+            />
             <Select label="Period" value={form.reviewPeriod} onChange={(e) => setForm({ ...form, reviewPeriod: e.target.value })}
               options={REVIEW_PERIODS.map((p) => ({ value: p, label: reviewPeriodLabel[p] }))} />
             <Input label="Review Date" type="date" value={form.reviewDate} onChange={(e) => setForm({ ...form, reviewDate: e.target.value })} />

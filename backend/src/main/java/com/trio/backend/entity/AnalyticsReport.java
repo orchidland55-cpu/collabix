@@ -35,9 +35,8 @@ public class AnalyticsReport extends AuditableEntity {
     @JoinColumn(name = "workspace_id", nullable = false, updatable = false)
     private Workspace workspace;
 
-    @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "department_id", nullable = false, updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
     private Department department;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -118,11 +117,13 @@ public class AnalyticsReport extends AuditableEntity {
         }
 
         Objects.requireNonNull(workspace, "workspace must not be null");
-        Objects.requireNonNull(department, "department must not be null");
-        if (!Objects.equals(workspace.getId(), department.getWorkspace().getId())) {
+        if (department != null && !Objects.equals(workspace.getId(), department.getWorkspace().getId())) {
             throw new IllegalStateException("AnalyticsReport.workspace must match department.workspace");
         }
         if (project != null) {
+            if (department == null) {
+                throw new IllegalStateException("AnalyticsReport.department is required when a project is set");
+            }
             if (!Objects.equals(department.getId(), project.getDepartment().getId())) {
                 throw new IllegalStateException("AnalyticsReport.department must match project.department");
             }

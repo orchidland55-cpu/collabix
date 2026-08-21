@@ -3,10 +3,12 @@ import { useWorkspacesList } from '../../services/workspace-hooks';
 import { useWorkspaceId } from '../../hooks/useWorkspaceId';
 import { useAuth } from '../../lib/auth-context';
 import { isAdmin } from '../../lib/access';
+import { onAuthEvent, type AuthEvent } from '../../lib/auth-events';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 
 const WORKSPACE_ROUTES = new Set([
   'all-workspaces', 'create-workspace', 'edit-workspace',
@@ -27,6 +29,16 @@ export function WorkspaceGuard({ children, routeKey }: { children: ReactNode; ro
   const isAdminUser = isAdmin(user?.roles ?? []);
   const { data: workspaces, isLoading, isError, refetch } = useWorkspacesList();
 
+  // Refetch workspaces automatically after a successful token refresh
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((event: AuthEvent) => {
+      if (event.type === 'token-refreshed') {
+        refetch();
+      }
+    });
+    return unsubscribe;
+  }, [refetch]);
+
   // Skip guard for workspace management pages
   if (WORKSPACE_ROUTES.has(routeKey)) return <>{children}</>;
 
@@ -45,8 +57,8 @@ export function WorkspaceGuard({ children, routeKey }: { children: ReactNode; ro
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <AlertCircle className="h-12 w-12 text-danger-500" />
-        <p className="text-body font-medium text-text-primary">Failed to load workspaces</p>
-        <p className="text-caption text-text-tertiary">Could not retrieve workspace data. Please try again.</p>
+        <p className="text-body font-medium text-text-primary">Failed to reload workspace</p>
+        <p className="text-caption text-text-tertiary">Could not retrieve workspace data. This may be due to an expired session.</p>
         <Button variant="primary" leftIcon={<RefreshCw />} onClick={() => refetch()}>Retry</Button>
       </div>
     );

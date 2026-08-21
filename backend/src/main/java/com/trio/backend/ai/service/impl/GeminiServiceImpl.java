@@ -68,7 +68,7 @@ public class GeminiServiceImpl implements GeminiService {
             Map response = restClient.post()
                     .uri(url)
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("x-goog-api-key", apiKey)
                     .body(requestBody)
                     .retrieve()
                     .body(Map.class);
