@@ -36,8 +36,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -200,6 +202,9 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
                 ? projectRepository.findByIdAndDepartment_Id(projectId, departmentId).orElse(null)
                 : null;
 
+        Map<String, Object> analysis = aiResponse.getStructuredAnalysis();
+        String finalReport = aiResponse.getResponse();
+
         AnalyticsReport report = new AnalyticsReport();
         report.setWorkspace(workspace);
         report.setDepartment(department);
@@ -207,12 +212,15 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
         report.setReportDate(LocalDate.now());
         report.setTimeRangeStart(startDate);
         report.setTimeRangeEnd(endDate);
-        report.setExecutiveSummary(aiResponse.getResponse());
-        report.setKpiHighlights(aiResponse.getResponse());
-        report.setTrendsSummary(aiResponse.getResponse());
-        report.setRiskAssessment(aiResponse.getResponse());
-        report.setRecommendations(aiResponse.getResponse());
-        report.setDetailedReport(aiResponse.getResponse());
+
+        // Populate structured fields from analysis JSON
+        report.setExecutiveSummary(getStringOrDefault(analysis, "executiveSummary", "Executive summary not available."));
+        report.setKpiHighlights(getStringOrDefault(analysis, "kpiHighlights", "KPI highlights not available."));
+        report.setTrendsSummary(getStringOrDefault(analysis, "trendsSummary", "Trends summary not available."));
+        report.setRiskAssessment(formatListOrDefault(analysis, "riskAssessment", "No risks identified."));
+        report.setRecommendations(formatListOrDefault(analysis, "recommendations", "No recommendations available."));
+        report.setDetailedReport(finalReport != null ? finalReport : "Report generation incomplete.");
+
         report.setGenerationStatus(AnalyticsReport.GenerationStatus.COMPLETED);
         report.setGenerationDate(LocalDateTime.now());
         report.setGenerationProcessedBy(userId);
@@ -222,6 +230,24 @@ public class AnalyticsAIServiceImpl implements AnalyticsAIService {
                 saved.getId(), workspaceId, executionTime);
 
         return toResponse(saved, executionTime);
+    }
+
+    private String getStringOrDefault(Map<String, Object> map, String key, String defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        return value.toString();
+    }
+
+    private String formatListOrDefault(Map<String, Object> map, String key, String defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(Object::toString)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.joining("\n• ", "• ", ""));
+        }
+        return value.toString();
     }
 
     private AnalyticsAIResponse toResponse(AnalyticsReport report, long executionTime) {

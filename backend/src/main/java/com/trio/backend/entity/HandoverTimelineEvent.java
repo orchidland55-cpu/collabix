@@ -46,6 +46,7 @@ public class HandoverTimelineEvent extends AuditableEntity {
     private UUID actorId;
 
     @NotNull
+    @Builder.Default
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt = Instant.now();
 

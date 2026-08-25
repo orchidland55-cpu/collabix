@@ -113,7 +113,7 @@ export function ConversationList() {
                   trigger={<IconButton icon={<MoreHorizontal className="h-4 w-4" />} ariaLabel="Options" />}
                   items={[
                     { id: 'open', label: 'Open Channel', onClick: () => navigate(`/app/communication/chat/${conv.id}?ws=${wsId}`) },
-                    { id: 'members', label: 'View Members', onClick: () => navigate(`/app/communication/chat/${conv.id}/members?ws=${wsId}`) },
+                    { id: 'members', label: 'Open Chat & Members', onClick: () => navigate(`/app/communication/chat/${conv.id}?ws=${wsId}`) },
                   ]}
                 />
               </div>

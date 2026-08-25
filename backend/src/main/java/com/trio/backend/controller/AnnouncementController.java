@@ -28,7 +28,7 @@ public class AnnouncementController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_CREATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_CREATE')")
     @Operation(summary = "Create an announcement", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<AnnouncementResponse> create(
             @PathVariable UUID workspaceId,
@@ -109,7 +109,7 @@ public class AnnouncementController {
     }
 
     @PutMapping("/{announcementId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_UPDATE')")
     @Operation(summary = "Update an announcement", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<AnnouncementResponse> update(
             @PathVariable UUID workspaceId,
@@ -124,7 +124,7 @@ public class AnnouncementController {
 
     @DeleteMapping("/{announcementId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_DELETE')")
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANNOUNCEMENT_DELETE')")
     @Operation(summary = "Delete (archive) an announcement", security = @SecurityRequirement(name = "bearer"))
     public void delete(
             @PathVariable UUID workspaceId,

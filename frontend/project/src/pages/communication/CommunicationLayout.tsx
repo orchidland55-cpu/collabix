@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Outlet, useNavigate, useSearchParams } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare, Hash, Bell, Search, FileText, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../lib/cn';
+import { CreateChannelModal } from './modals/CreateChannelModal';
 
 const tabs = [
   { id: 'conversations', label: 'Channels', icon: Hash },
@@ -12,11 +13,29 @@ const tabs = [
   { id: 'files', label: 'Shared Files', icon: FileText },
 ];
 
+function activeTabFromPathname(pathname: string): string {
+  const sub = pathname.replace('/app/communication', '').split('/')[0];
+  return tabs.some((t) => t.id === sub) ? sub : 'conversations';
+}
+
 export function CommunicationLayout() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const wsId = searchParams.get('ws') ?? '';
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('conversations');
+  const [activeTab, setActiveTab] = useState(() => activeTabFromPathname(location.pathname));
+
+  // Keep the tab highlight in sync with deep links and sidebar navigation.
+  const urlTab = activeTabFromPathname(location.pathname);
+  if (urlTab !== activeTab) {
+    setActiveTab(urlTab);
+  }
+
+  // The create-channel "route" opens the dashboard with the modal on top,
+  // so every Create Channel button across the module can keep linking to it.
+  const isCreateChannel = location.pathname.endsWith('/create-channel');
+  const closeCreateChannel = () =>
+    navigate(`/app/communication/conversations${wsId ? `?ws=${wsId}` : ''}`);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -66,6 +85,8 @@ export function CommunicationLayout() {
       <div className="flex-1">
         <Outlet />
       </div>
+
+      <CreateChannelModal open={isCreateChannel} onClose={closeCreateChannel} />
     </div>
   );
 }

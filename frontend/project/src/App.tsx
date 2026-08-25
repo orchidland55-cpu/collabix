@@ -191,6 +191,15 @@ const routeMeta: Record<string, RouteMeta> = {
   'communication-files': { title: 'Shared Files', icon: FileText, parent: 'communication' },
 };
 
+/** Maps sidebar nav ids to the actual /app/communication/* sub routes. */
+const COMMUNICATION_NAV_PATHS: Record<string, string> = {
+  'communication-channels': 'conversations',
+  'communication-direct': 'direct-messages',
+  'communication-announcements': 'announcements',
+  'communication-search': 'search',
+  'communication-files': 'files',
+};
+
 function extractNavKey(pathname: string, search = ''): string {
   const parts = pathname.replace('/app/', '').split('/');
   if (parts[0] === 'admin' && parts.length > 1) {
@@ -206,8 +215,15 @@ function extractNavKey(pathname: string, search = ''): string {
   if (parts[0] === 'ai' && parts.length > 1) {
     return `ai-${parts[1]}`;
   }
-  if (parts[0] === 'communication' && parts.length > 1) {
-    return `communication-${parts[1]}`;
+  if (parts[0] === 'communication') {
+    const sub = parts[1];
+    if (!sub) return 'communication';
+    // Normalize module sub-routes onto the sidebar nav ids
+    if (sub === 'conversations' || sub === 'chat' || sub === 'create-channel') {
+      return 'communication-channels';
+    }
+    if (sub === 'direct-messages') return 'communication-direct';
+    return `communication-${sub}`;
   }
   if (parts[0] === 'settings') {
     return 'workspace-settings';
@@ -263,6 +279,9 @@ function AppLayout() {
         } else if (id === 'my-dashboard') {
           const ws = new URLSearchParams(location.search).get('ws');
           navigate(`/app/personal-dashboard${ws ? `?ws=${ws}` : ''}`);
+        } else if (COMMUNICATION_NAV_PATHS[id]) {
+          const ws = new URLSearchParams(location.search).get('ws');
+          navigate(`/app/communication/${COMMUNICATION_NAV_PATHS[id]}${ws ? `?ws=${ws}` : ''}`);
         } else {
           navigate(`/app/${id}`);
         }
@@ -595,6 +614,7 @@ function AppRoutes() {
           <Route path="announcements" element={<AnnouncementsPage />} />
           <Route path="search" element={<MessageSearch />} />
           <Route path="files" element={<SharedFiles />} />
+          <Route path="create-channel" element={<CommunicationDashboard />} />
         </Route>
       </Route>
 

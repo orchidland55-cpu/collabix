@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { ConversationComposer } from './ConversationComposer';
 import { ConversationWelcome } from './ConversationWelcome';
 import { useCreateConversation } from '../../../services/conversation-hooks';
+import { useToast } from '../../ui/Toast';
 import { aiPath } from '../../../hooks/useEffectiveWorkspaceId';
 
 interface OutletContext {
@@ -11,6 +12,7 @@ interface OutletContext {
 
 export function ConversationPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { workspaceId } = useOutletContext<OutletContext>();
   const createConversation = useCreateConversation(workspaceId);
 
@@ -22,8 +24,12 @@ export function ConversationPage() {
         type: 'WORKSPACE',
       });
       navigate(aiPath(`/app/ai/conversations/${conversation.id}`, workspaceId));
-    } catch {
-      // Error surfaced by mutation / global handler
+    } catch (err) {
+      toast({
+        title: 'Could not start conversation',
+        description: err instanceof Error ? err.message : 'An unexpected error occurred.',
+        tone: 'danger',
+      });
     }
   }
 

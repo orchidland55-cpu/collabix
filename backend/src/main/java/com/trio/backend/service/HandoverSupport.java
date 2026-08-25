@@ -135,6 +135,7 @@ public class HandoverSupport {
                 .eventType(type)
                 .description(description)
                 .actorId(actorId)
+                .occurredAt(java.time.Instant.now())
                 .build();
         timelineEventRepository.save(event);
     }

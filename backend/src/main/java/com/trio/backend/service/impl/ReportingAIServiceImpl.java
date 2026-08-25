@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -254,6 +255,9 @@ public class ReportingAIServiceImpl implements ReportingAIService {
                     ? projectRepository.findById(request.getProjectId()).orElse(null)
                     : null);
 
+        Map<String, Object> analysis = aiResponse.getStructuredAnalysis();
+        String finalReport = aiResponse.getResponse();
+
         ExecutiveReport report = new ExecutiveReport();
         report.setWorkspace(workspace);
         report.setDepartment(department);
@@ -263,17 +267,20 @@ public class ReportingAIServiceImpl implements ReportingAIService {
         report.setPeriodStart(request.getPeriodStart());
         report.setPeriodEnd(request.getPeriodEnd());
         report.setReportVersion(1);
-        report.setExecutiveSummary(aiResponse.getResponse());
-        report.setMajorHighlights(aiResponse.getResponse());
-        report.setBusinessHealth(aiResponse.getResponse());
-        report.setProductivityReview(aiResponse.getResponse());
-        report.setCriticalRisks(aiResponse.getResponse());
-        report.setAchievements(aiResponse.getResponse());
-        report.setChallenges(aiResponse.getResponse());
-        report.setRecommendations(aiResponse.getResponse());
-        report.setStrategicPriorities(aiResponse.getResponse());
-        report.setNextActions(aiResponse.getResponse());
-        report.setFinalReport(aiResponse.getResponse());
+
+        // Populate structured fields from analysis JSON
+        report.setExecutiveSummary(getStringOrDefault(analysis, "executiveSummary", "Executive summary not available."));
+        report.setMajorHighlights(formatListOrDefault(analysis, "majorHighlights", "No major highlights available."));
+        report.setBusinessHealth(getStringOrDefault(analysis, "businessHealth", "Business health assessment not available."));
+        report.setProductivityReview(getStringOrDefault(analysis, "productivityReview", "Productivity review not available."));
+        report.setCriticalRisks(formatListOrDefault(analysis, "criticalRisks", "No critical risks identified."));
+        report.setAchievements(formatListOrDefault(analysis, "achievements", "No achievements recorded."));
+        report.setChallenges(formatListOrDefault(analysis, "challenges", "No challenges recorded."));
+        report.setRecommendations(formatListOrDefault(analysis, "recommendations", "No recommendations available."));
+        report.setStrategicPriorities(formatListOrDefault(analysis, "strategicPriorities", "No strategic priorities defined."));
+        report.setNextActions(formatListOrDefault(analysis, "nextActions", "No next actions specified."));
+        report.setFinalReport(finalReport != null ? finalReport : "Report generation incomplete.");
+
         report.setGenerationStatus(ExecutiveReport.GenerationStatus.COMPLETED);
         report.setGenerationDate(LocalDateTime.now());
         report.setGenerationProcessedBy(userId);
@@ -283,6 +290,24 @@ public class ReportingAIServiceImpl implements ReportingAIService {
                 saved.getId(), request.getTitle(), request.getWorkspaceId(), executionTime);
 
         return toResponse(saved, executionTime);
+    }
+
+    private String getStringOrDefault(Map<String, Object> map, String key, String defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        return value.toString();
+    }
+
+    private String formatListOrDefault(Map<String, Object> map, String key, String defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(Object::toString)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.joining("\n• ", "• ", ""));
+        }
+        return value.toString();
     }
 
     private ReportingResponse toResponse(ExecutiveReport report, Long executionTime) {

@@ -7,6 +7,7 @@ import lombok.Getter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Getter
@@ -26,4 +27,6 @@ public class AIExecutionResponse {
     private List<UUID> historyIds;
 
     private Instant timestamp;
+
+    private Map<String, Object> structuredAnalysis;
 }

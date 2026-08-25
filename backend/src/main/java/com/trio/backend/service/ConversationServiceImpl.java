@@ -140,7 +140,7 @@ public class ConversationServiceImpl implements ConversationService {
     public ConversationResponse getById(UUID workspaceId, UUID conversationId) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         Conversation conversation = conversationRepository.findByIdAndWorkspace(conversationId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conversation not found."));
@@ -291,7 +291,7 @@ public class ConversationServiceImpl implements ConversationService {
     public List<ConversationMemberResponse> listMembers(UUID workspaceId, UUID conversationId) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         return conversationMemberRepository.findMembersWithUser(conversationId)
                 .stream().map(conversationMapper::toMemberResponse).toList();
@@ -305,7 +305,13 @@ public class ConversationServiceImpl implements ConversationService {
 
         ConversationMember member = conversationMemberRepository
                 .findById_ConversationIdAndId_UserId(conversationId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Not a member of this conversation."));
+                .orElse(null);
+
+        if (member == null) {
+            // Public channels are readable without joining; no unread tracking yet.
+            assertConversationVisible(conversationId, userId);
+            return 0;
+        }
 
         Instant lastReadAt = member.getLastReadAt();
         if (lastReadAt == null) {
@@ -354,6 +360,21 @@ public class ConversationServiceImpl implements ConversationService {
 
     private void assertConversationMember(UUID conversationId, UUID userId) {
         if (!conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userId)) {
+            throw new ForbiddenException("You are not a member of this conversation.");
+        }
+    }
+
+    /**
+     * Members always have access. Public (non-private) channels are also readable
+     * by every active workspace member, even before joining.
+     */
+    private void assertConversationVisible(UUID conversationId, UUID userId) {
+        if (conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userId)) {
+            return;
+        }
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found."));
+        if (conversation.isPrivate()) {
             throw new ForbiddenException("You are not a member of this conversation.");
         }
     }

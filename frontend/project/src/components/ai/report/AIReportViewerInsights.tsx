@@ -1,6 +1,7 @@
 import { TrendingUp, AlertTriangle, CheckCircle, BarChart3, Users } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { Badge } from '../../ui/Badge';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 import { type Insight } from './AIReportViewerTypes';
 
 interface AIReportViewerInsightsProps {
@@ -51,7 +52,7 @@ export function AIReportViewerInsights({ insights }: AIReportViewerInsightsProps
                 <p className="text-body font-semibold text-text-primary">{insight.title}</p>
                 <Badge variant="soft" tone={priorityTone[insight.priority]} className="text-2xs">{insight.priority}</Badge>
               </div>
-              <p className="text-caption text-text-secondary leading-relaxed">{insight.description}</p>
+              <MarkdownRenderer content={insight.description} className="text-caption" />
             </div>
           </div>
         </div>

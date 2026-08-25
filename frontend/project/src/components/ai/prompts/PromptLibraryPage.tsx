@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Star, Sparkles } from 'lucide-react';
 import { PromptHeader } from './PromptHeader';
 import { PromptSearch } from './PromptSearch';
@@ -13,15 +13,37 @@ import { PromptErrorCard } from './PromptErrorCard';
 import type { Prompt, PromptCategoryId } from './PromptTypes';
 import { useAIPrompts } from '../../../services/prompt-ai-hooks';
 import type { AIPromptResponse } from '../../../services/prompt-ai-service';
+import { usePromptExecution } from '../../../services/prompt-execution-service';
+import { useToast } from '../../../components/ui/Toast';
 
 const categoryMap: Record<AIPromptResponse['category'], PromptCategoryId> = {
   ANALYTICS: 'analytics',
   HANDOVER: 'handover',
   KNOWLEDGE: 'knowledge',
+  REPORTS: 'reports',
   GENERAL: 'workspace',
 };
 
 function mapPrompt(p: AIPromptResponse): Prompt {
+  // Determine required context based on category
+  let requiredContext: string[] = [];
+  switch (p.category) {
+    case 'ANALYTICS':
+      requiredContext = ['departmentId', 'period'];
+      break;
+    case 'REPORTS':
+      requiredContext = ['departmentId', 'title', 'period'];
+      break;
+    case 'HANDOVER':
+      requiredContext = ['departmentId', 'projectId', 'date', 'shift'];
+      break;
+    case 'KNOWLEDGE':
+      requiredContext = ['question'];
+      break;
+    default:
+      requiredContext = ['workspace'];
+  }
+
   return {
     id: p.id,
     title: p.name,
@@ -30,7 +52,7 @@ function mapPrompt(p: AIPromptResponse): Prompt {
     tags: [p.code],
     businessObjective: p.description ?? p.name,
     useCases: [],
-    requiredContext: [],
+    requiredContext,
     expectedOutput: 'AI-generated output based on workspace context',
     executionTime: '',
     favorite: false,
@@ -45,9 +67,14 @@ export function PromptLibraryPage() {
   const [runPrompt, setRunPrompt] = useState<Prompt | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [searches, setSearches] = useState<string[]>([]);
+  const [executingPrompt, setExecutingPrompt] = useState<Prompt | null>(null);
+  const [executionVariables, setExecutionVariables] = useState<Record<string, string>>({});
+  const [executionQuestion, setExecutionQuestion] = useState('');
 
   const { data: apiPrompts, isLoading, isError, refetch } = useAIPrompts();
   const prompts = useMemo(() => (apiPrompts ?? []).map(mapPrompt), [apiPrompts]);
+  const { executePrompt } = usePromptExecution();
+  const { toast } = useToast();
 
   const filtered = useMemo(() => {
     let items = [...prompts];
@@ -92,6 +119,74 @@ export function PromptLibraryPage() {
     setSearchQuery('');
   };
 
+  const handleRunPrompt = useCallback(async (prompt: Prompt) => {
+    // Find the original API prompt to get the category
+    const apiPrompt = apiPrompts?.find((p) => p.id === prompt.id);
+    if (!apiPrompt) {
+      toast({ title: 'Prompt not found', tone: 'error' });
+      return;
+    }
+
+    // For prompts that need variables, open the run modal
+    if (prompt.requiredContext.length > 0) {
+      setRunPrompt(prompt);
+      setExecutingPrompt(prompt);
+      setExecutionVariables({});
+      setExecutionQuestion('');
+      return;
+    }
+
+    // For prompts with no required context, execute directly
+    await executePromptAction(apiPrompt, {}, '');
+  }, [apiPrompts, executePrompt]);
+
+  const executePromptAction = useCallback(async (
+    apiPrompt: AIPromptResponse,
+    variables: Record<string, string>,
+    question: string
+  ) => {
+    // Convert AIPromptResponse to Prompt type for executing state
+    const executingPromptData: Prompt = {
+      id: apiPrompt.id,
+      title: apiPrompt.name,
+      description: apiPrompt.description ?? '',
+      category: categoryMap[apiPrompt.category] ?? 'workspace',
+      tags: [apiPrompt.code],
+      businessObjective: apiPrompt.description ?? apiPrompt.name,
+      useCases: [],
+      requiredContext: [],
+      expectedOutput: 'AI-generated output based on workspace context',
+      executionTime: '',
+      favorite: false,
+      featured: apiPrompt.active,
+    };
+    setExecutingPrompt(executingPromptData);
+    try {
+      const result = await executePrompt(apiPrompt, variables, question);
+      if (result.success) {
+        toast({ title: 'Prompt executed successfully', tone: 'success' });
+        // Navigate to the result if there's a resultId
+        if (result.resultId) {
+          // Could navigate to report viewer or show result modal
+          console.log('Execution result:', result);
+        }
+      } else {
+        toast({ title: result.error || 'Prompt execution failed', tone: 'error' });
+      }
+    } catch (error) {
+      toast({ title: 'Failed to execute prompt', tone: 'error' });
+    } finally {
+      setExecutingPrompt(null);
+      setRunPrompt(null);
+    }
+  }, [executePrompt]);
+
+  const handleRunModalSubmit = useCallback(async (prompt: Prompt, variables: Record<string, string>, question: string) => {
+    const apiPrompt = apiPrompts?.find((p) => p.id === prompt.id);
+    if (!apiPrompt) return;
+    await executePromptAction(apiPrompt, variables, question);
+  }, [apiPrompts, executePromptAction]);
+
   if (isLoading) return <PromptLoading />;
 
   if (isError) {
@@ -121,7 +216,7 @@ export function PromptLibraryPage() {
       <PromptCategoryNav active={activeCategory} onChange={handleCategoryChange} />
 
       {showFeatured && (
-        <PromptFeatured prompts={featured} onPreview={setSelectedPrompt} onRun={setRunPrompt} onToggleFavorite={handleToggleFavorite} favorites={favorites} />
+        <PromptFeatured prompts={featured} onPreview={setSelectedPrompt} onRun={handleRunPrompt} onToggleFavorite={handleToggleFavorite} favorites={favorites} />
       )}
 
       {showFavorites && (
@@ -133,7 +228,7 @@ export function PromptLibraryPage() {
           <PromptGrid
             prompts={favoritePrompts}
             onPreview={setSelectedPrompt}
-            onRun={setRunPrompt}
+            onRun={handleRunPrompt}
             onToggleFavorite={handleToggleFavorite}
             favorites={favorites}
           />
@@ -162,7 +257,7 @@ export function PromptLibraryPage() {
             <PromptGrid
               prompts={filtered.length > 0 ? filtered : prompts}
               onPreview={setSelectedPrompt}
-              onRun={setRunPrompt}
+              onRun={handleRunPrompt}
               onToggleFavorite={handleToggleFavorite}
               favorites={favorites}
             />
@@ -176,15 +271,22 @@ export function PromptLibraryPage() {
           isFavorite={favorites.has(selectedPrompt.id)}
           onClose={() => setSelectedPrompt(null)}
           onToggleFavorite={() => handleToggleFavorite(selectedPrompt.id)}
-          onRun={() => { setRunPrompt(selectedPrompt); setSelectedPrompt(null); }}
+          onRun={() => { handleRunPrompt(selectedPrompt); setSelectedPrompt(null); }}
         />
       )}
 
       {runPrompt && (
         <PromptRunModal
           prompt={runPrompt}
-          onClose={() => setRunPrompt(null)}
-          onRun={() => setRunPrompt(null)}
+          onClose={() => { setRunPrompt(null); setExecutingPrompt(null); }}
+          onRun={async (variables: Record<string, string>, question: string) => {
+            await handleRunModalSubmit(runPrompt, variables, question);
+          }}
+          variables={executionVariables}
+          onVariablesChange={setExecutionVariables}
+          question={executionQuestion}
+          onQuestionChange={setExecutionQuestion}
+          isExecuting={!!executingPrompt}
         />
       )}
     </div>

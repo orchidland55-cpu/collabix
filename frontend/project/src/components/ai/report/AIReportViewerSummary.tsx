@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface AIReportViewerSummaryProps {
   summary: string;
@@ -13,7 +14,7 @@ export function AIReportViewerSummary({ summary }: AIReportViewerSummaryProps) {
           <Sparkles className="h-4 w-4 text-accent-600 dark:text-accent-400" />
           <p className="text-caption font-semibold text-accent-600 dark:text-accent-400">Executive Summary</p>
         </div>
-        <p className="text-body-lg text-text-primary leading-relaxed font-medium">{summary}</p>
+        <MarkdownRenderer content={summary} />
       </div>
     </div>
   );

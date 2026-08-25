@@ -151,7 +151,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     public EmployeeResponse getById(UUID workspaceId, UUID departmentId, UUID employeeId) {
         SecurityUtils.getCurrentUserId();
 
-        Employee employee = findActiveEmployee(workspaceId, departmentId, employeeId);
+        Employee employee = findEmployee(workspaceId, departmentId, employeeId);
         return employeeMapper.toResponse(employee);
     }
 
@@ -175,7 +175,9 @@ public class EmployeeServiceImpl implements EmployeeService {
     public EmployeeResponse update(UUID workspaceId, UUID departmentId, UUID employeeId, UpdateEmployeeRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
 
-        Employee employee = findActiveEmployee(workspaceId, departmentId, employeeId);
+        // Any employee record can be updated, including terminated/resigned/retired
+        // ones, so HR can reactivate a former employee by setting their status back.
+        Employee employee = findEmployee(workspaceId, departmentId, employeeId);
 
         if (request.getEmail() != null && !request.getEmail().equals(employee.getEmail())) {
             if (employeeRepository.existsByEmailAndIdNot(request.getEmail(), employeeId)) {
@@ -265,7 +267,14 @@ public class EmployeeServiceImpl implements EmployeeService {
     public void delete(UUID workspaceId, UUID departmentId, UUID employeeId) {
         UUID userId = SecurityUtils.getCurrentUserId();
 
-        Employee employee = findActiveEmployee(workspaceId, departmentId, employeeId);
+        Employee employee = employeeRepository.findByIdAndDepartment_Id(employeeId, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
+        if (employee.getEmploymentStatus() == EmploymentStatus.TERMINATED
+                || employee.getEmploymentStatus() == EmploymentStatus.RESIGNED
+                || employee.getEmploymentStatus() == EmploymentStatus.RETIRED) {
+            throw new BadRequestException(
+                    "This employee has already left the company (" + employee.getEmploymentStatus().name() + ") and cannot be deleted again.");
+        }
 
         employee.setEmploymentStatus(EmploymentStatus.TERMINATED);
         employee.setEndDate(LocalDate.now());
@@ -283,7 +292,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     public List<EmployeeTimelineEntry> getTimeline(UUID workspaceId, UUID departmentId, UUID employeeId) {
         SecurityUtils.getCurrentUserId();
 
-        findActiveEmployee(workspaceId, departmentId, employeeId);
+        findEmployee(workspaceId, departmentId, employeeId);
 
         List<EmployeeEventLog> logs = employeeEventLogRepository
                 .findAllByEmployee_IdOrderByCreatedAtDesc(employeeId);
@@ -347,14 +356,9 @@ public class EmployeeServiceImpl implements EmployeeService {
         return stats;
     }
 
-    private Employee findActiveEmployee(UUID workspaceId, UUID departmentId, UUID employeeId) {
+    private Employee findEmployee(UUID workspaceId, UUID departmentId, UUID employeeId) {
         Employee employee = employeeRepository.findByIdAndDepartment_Id(employeeId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
-        if (employee.getEmploymentStatus() == EmploymentStatus.TERMINATED
-                || employee.getEmploymentStatus() == EmploymentStatus.RESIGNED
-                || employee.getEmploymentStatus() == EmploymentStatus.RETIRED) {
-            throw new ResourceNotFoundException("Employee not found.");
-        }
         return employee;
     }
 

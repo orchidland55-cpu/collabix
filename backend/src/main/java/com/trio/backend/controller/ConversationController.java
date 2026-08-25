@@ -30,7 +30,7 @@ public class ConversationController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_CREATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_CREATE')")
     @Operation(summary = "Create a conversation/channel", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<ConversationResponse> create(
             @PathVariable UUID workspaceId,
@@ -107,7 +107,7 @@ public class ConversationController {
     }
 
     @PutMapping("/{conversationId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
     @Operation(summary = "Update a conversation", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<ConversationResponse> update(
             @PathVariable UUID workspaceId,
@@ -121,7 +121,7 @@ public class ConversationController {
     }
 
     @PostMapping("/{conversationId}/archive")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
     @Operation(summary = "Archive a conversation", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<Void> archive(
             @PathVariable UUID workspaceId,
@@ -133,7 +133,7 @@ public class ConversationController {
 
     @DeleteMapping("/{conversationId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_DELETE')")
+    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_DELETE')")
     @Operation(summary = "Delete a conversation", security = @SecurityRequirement(name = "bearer"))
     public void delete(
             @PathVariable UUID workspaceId,
@@ -143,7 +143,7 @@ public class ConversationController {
     }
 
     @PostMapping("/{conversationId}/members/{userId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
     @Operation(summary = "Add a member to conversation", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<ConversationResponse> addMember(
             @PathVariable UUID workspaceId,
@@ -157,7 +157,7 @@ public class ConversationController {
     }
 
     @DeleteMapping("/{conversationId}/members/{userId}")
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'CONVERSATION_UPDATE')")
     @Operation(summary = "Remove a member from conversation", security = @SecurityRequirement(name = "bearer"))
     public ApiResponse<Void> removeMember(
             @PathVariable UUID workspaceId,

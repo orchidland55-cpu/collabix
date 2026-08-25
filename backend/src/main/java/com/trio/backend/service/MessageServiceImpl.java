@@ -4,6 +4,7 @@ import com.trio.backend.dto.communication.CreateMessageRequest;
 import com.trio.backend.dto.communication.MessageResponse;
 import com.trio.backend.dto.communication.UpdateMessageRequest;
 import com.trio.backend.entity.*;
+import com.trio.backend.entity.ids.ConversationMemberId;
 import com.trio.backend.enums.MessageStatusEnum;
 import com.trio.backend.enums.MessageType;
 import com.trio.backend.enums.WorkspaceMemberStatus;
@@ -47,10 +48,12 @@ public class MessageServiceImpl implements MessageService {
     public MessageResponse create(UUID workspaceId, UUID conversationId, CreateMessageRequest request) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
 
         Conversation conversation = conversationRepository.findByIdAndWorkspace(conversationId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conversation not found."));
+
+        // Public channels auto-join on first message; private ones require membership.
+        ensureConversationMembership(conversation, userId);
 
         if (conversation.isArchived()) {
             throw new BadRequestException("Cannot send messages to an archived conversation.");
@@ -104,7 +107,7 @@ public class MessageServiceImpl implements MessageService {
             throw new ResourceNotFoundException("Message not found in this workspace.");
         }
 
-        assertConversationMember(message.getConversation().getId(), userId);
+        assertConversationVisible(message.getConversation().getId(), userId);
 
         return messageMapper.toResponse(message);
     }
@@ -114,7 +117,7 @@ public class MessageServiceImpl implements MessageService {
     public Page<MessageResponse> listByConversation(UUID workspaceId, UUID conversationId, UUID cursor, Pageable pageable) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         Page<Message> messages;
         if (cursor != null) {
@@ -143,7 +146,7 @@ public class MessageServiceImpl implements MessageService {
     public List<MessageResponse> listPinned(UUID workspaceId, UUID conversationId) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         return messageRepository.findPinnedMessages(conversationId)
                 .stream().map(messageMapper::toResponse).toList();
@@ -154,7 +157,7 @@ public class MessageServiceImpl implements MessageService {
     public Page<MessageResponse> listFilesByConversation(UUID workspaceId, UUID conversationId, Pageable pageable) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         return messageRepository.findFilesByConversation(conversationId, pageable)
                 .map(messageMapper::toResponse);
@@ -175,7 +178,7 @@ public class MessageServiceImpl implements MessageService {
     public Page<MessageResponse> search(UUID workspaceId, UUID conversationId, String query, Pageable pageable) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
-        assertConversationMember(conversationId, userId);
+        assertConversationVisible(conversationId, userId);
 
         return messageRepository.searchMessages(conversationId, query, pageable)
                 .map(messageMapper::toResponse);
@@ -281,6 +284,39 @@ public class MessageServiceImpl implements MessageService {
         if (!conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userId)) {
             throw new ForbiddenException("You are not a member of this conversation.");
         }
+    }
+
+    /**
+     * Members always have access. Public (non-private) channels are also readable
+     * by every active workspace member, even before joining.
+     */
+    private void assertConversationVisible(UUID conversationId, UUID userId) {
+        if (conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userId)) {
+            return;
+        }
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found."));
+        if (conversation.isPrivate()) {
+            throw new ForbiddenException("You are not a member of this conversation.");
+        }
+    }
+
+    /** Lets any active workspace member send messages in public channels by auto-joining. */
+    private void ensureConversationMembership(Conversation conversation, UUID userId) {
+        if (conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversation.getId(), userId)) {
+            return;
+        }
+        if (conversation.isPrivate()) {
+            throw new ForbiddenException("You are not a member of this conversation.");
+        }
+        ConversationMember member = ConversationMember.builder()
+                .id(new ConversationMemberId(conversation.getId(), userId))
+                .conversation(conversation)
+                .user(userRepository.getReferenceById(userId))
+                .joinedAt(Instant.now())
+                .role("MEMBER")
+                .build();
+        conversationMemberRepository.save(member);
     }
 
     private UUID getAuthenticatedUserId() {

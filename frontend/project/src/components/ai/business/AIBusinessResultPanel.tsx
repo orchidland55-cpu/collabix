@@ -1,5 +1,6 @@
 import { Sparkles, Lightbulb, Target, ListChecks, AlertTriangle } from 'lucide-react';
 import { cn } from '../../../lib/cn';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface AIBusinessResultPanelProps {
   summary: string;
@@ -13,7 +14,7 @@ export function AIBusinessResultPanel({ summary, insights, recommendations, keyP
   return (
     <div className={cn('rounded-xl border border-border-subtle bg-elevated dark:bg-surface divide-y divide-border-subtle', className)}>
       <Section icon={<Sparkles />} title="Executive Summary" iconColor="text-accent-500">
-        <p className="text-body text-text-secondary leading-relaxed">{summary}</p>
+        <MarkdownRenderer content={summary} className="text-body" />
       </Section>
 
       <Section icon={<Lightbulb />} title="Business Insights" iconColor="text-info-500">
@@ -21,7 +22,7 @@ export function AIBusinessResultPanel({ summary, insights, recommendations, keyP
           {insights.map((item) => (
             <li key={item} className="flex items-start gap-2.5 text-body text-text-secondary">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-400" />
-              {item}
+              <MarkdownRenderer content={item} className="inline" />
             </li>
           ))}
         </ul>
@@ -32,7 +33,7 @@ export function AIBusinessResultPanel({ summary, insights, recommendations, keyP
           {recommendations.map((item) => (
             <li key={item} className="flex items-start gap-2.5 text-body text-text-secondary">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success-500" />
-              {item}
+              <MarkdownRenderer content={item} className="inline" />
             </li>
           ))}
         </ul>

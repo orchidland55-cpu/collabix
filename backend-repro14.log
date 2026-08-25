@@ -1,0 +1,107 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] --------------------------< com.trio:backend >--------------------------
+[INFO] Building Collabix Backend 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.5.2:run (default-cli) > test-compile @ backend >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ backend ---
+[INFO] Copying 3 resources from src\main\resources to target\classes
+[INFO] Copying 97 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ backend ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ backend ---
+[INFO] Copying 1 resource from src\test\resources to target\test-classes
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ backend ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.5.2:run (default-cli) < test-compile @ backend <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.5.2:run (default-cli) @ backend ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.5.2)
+
+2026-08-24T15:37:48.163+01:00  INFO 20004 --- [backend] [  restartedMain] com.trio.backend.BackendApplication      : Starting BackendApplication using Java 26.0.1 with PID 20004 (C:\Users\SURFACE\Desktop\collabix\backend\target\classes started by TAHIR in C:\Users\SURFACE\Desktop\collabix\backend)
+2026-08-24T15:37:48.168+01:00  INFO 20004 --- [backend] [  restartedMain] com.trio.backend.BackendApplication      : No active profile set, falling back to 1 default profile: "default"
+2026-08-24T15:37:48.304+01:00  INFO 20004 --- [backend] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-08-24T15:37:48.304+01:00  INFO 20004 --- [backend] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-08-24T15:37:59.236+01:00  INFO 20004 --- [backend] [  restartedMain] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-08-24T15:38:02.364+01:00  INFO 20004 --- [backend] [  restartedMain] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 3101 ms. Found 61 JPA repository interfaces.
+2026-08-24T15:38:05.553+01:00  INFO 20004 --- [backend] [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8082 (http)
+2026-08-24T15:38:05.592+01:00  INFO 20004 --- [backend] [  restartedMain] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-08-24T15:38:05.593+01:00  INFO 20004 --- [backend] [  restartedMain] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.42]
+2026-08-24T15:38:05.740+01:00  INFO 20004 --- [backend] [  restartedMain] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-08-24T15:38:05.742+01:00  INFO 20004 --- [backend] [  restartedMain] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 17436 ms
+2026-08-24T15:38:07.012+01:00  INFO 20004 --- [backend] [  restartedMain] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-08-24T15:38:07.804+01:00  INFO 20004 --- [backend] [  restartedMain] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@75cf9f1c
+2026-08-24T15:38:07.810+01:00  INFO 20004 --- [backend] [  restartedMain] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-08-24T15:38:07.886+01:00  INFO 20004 --- [backend] [  restartedMain] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://localhost:5432/collabix_db (PostgreSQL 18.3)
+2026-08-24T15:38:07.911+01:00  WARN 20004 --- [backend] [  restartedMain] o.f.c.internal.database.base.Database    : Flyway upgrade recommended: PostgreSQL 18.3 is newer than this version of Flyway and support has not been tested. The latest supported version of PostgreSQL is 17.
+2026-08-24T15:38:08.890+01:00  INFO 20004 --- [backend] [  restartedMain] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 20260856
+2026-08-24T15:38:08.898+01:00  INFO 20004 --- [backend] [  restartedMain] o.f.core.internal.command.DbMigrate      : Schema "public" is up to date. No migration necessary.
+2026-08-24T15:38:09.351+01:00  INFO 20004 --- [backend] [  restartedMain] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-08-24T15:38:09.594+01:00  INFO 20004 --- [backend] [  restartedMain] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.18.Final
+2026-08-24T15:38:09.739+01:00  INFO 20004 --- [backend] [  restartedMain] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-08-24T15:38:10.821+01:00  INFO 20004 --- [backend] [  restartedMain] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-08-24T15:38:11.116+01:00  INFO 20004 --- [backend] [  restartedMain] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 18.3
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-08-24T15:38:14.241+01:00  WARN 20004 --- [backend] [  restartedMain] org.hibernate.mapping.RootClass          : HHH000038: Composite-id class does not override equals(): com.trio.backend.entity.DocumentTag$DocumentTagId
+2026-08-24T15:38:14.241+01:00  WARN 20004 --- [backend] [  restartedMain] org.hibernate.mapping.RootClass          : HHH000039: Composite-id class does not override hashCode(): com.trio.backend.entity.DocumentTag$DocumentTagId
+2026-08-24T15:38:19.490+01:00  INFO 20004 --- [backend] [  restartedMain] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-08-24T15:38:19.679+01:00  INFO 20004 --- [backend] [  restartedMain] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-08-24T15:38:20.572+01:00  INFO 20004 --- [backend] [  restartedMain] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-08-24T15:38:26.398+01:00  INFO 20004 --- [backend] [  restartedMain] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name customUserDetailsService
+2026-08-24T15:38:56.198+01:00  INFO 20004 --- [backend] [  restartedMain] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2026-08-24T15:38:57.648+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'dashboard.workspace' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.660+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'dashboard.personal' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.661+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'dashboard.department' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.661+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'dashboard.team' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.662+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'dashboard.project' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.662+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'permissions' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.662+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'roles' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.663+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'reference.departments' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.663+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'reference.teams' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.664+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'ai.prompts' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:57.664+01:00  WARN 20004 --- [backend] [  restartedMain] i.m.c.i.b.cache.CaffeineCacheMetrics     : The cache 'ai.models' is not recording statistics. No meters except 'cache.size' will be registered. Call 'Caffeine#recordStats()' prior to building the cache for metrics to be recorded.
+2026-08-24T15:38:58.939+01:00  WARN 20004 --- [backend] [  restartedMain] o.s.b.d.a.OptionalLiveReloadServer       : Unable to start LiveReload server
+2026-08-24T15:38:59.275+01:00  INFO 20004 --- [backend] [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8082 (http) with context path '/'
+2026-08-24T15:38:59.347+01:00  INFO 20004 --- [backend] [  restartedMain] com.trio.backend.BackendApplication      : Started BackendApplication in 72.739 seconds (process running for 74.88)
+2026-08-24T15:40:15.500+01:00  INFO 20004 --- [backend] [nio-8082-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-08-24T15:40:15.651+01:00  INFO 20004 --- [backend] [nio-8082-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-08-24T15:40:15.814+01:00  INFO 20004 --- [backend] [nio-8082-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 160 ms
+2026-08-24T15:40:20.480+01:00  INFO 20004 --- [backend] [nio-8082-exec-1] c.t.backend.config.AuthEventPublisher    : Successful login for user [id=d31aee4d-6722-44a0-9220-bb1b60170be2, email=mem.marketinga.qa@collabix.test].
+2026-08-24T15:40:23.473+01:00  INFO 20004 --- [backend] [nio-8082-exec-2] c.t.b.service.ConversationServiceImpl    : Conversation created: id=5d25691b-95e5-4811-89b8-483ecbe27802, name=New conversation, type=WORKSPACE, workspace=94e8f2a6-7bfc-4d3b-a4d3-212fb3e31b6d
+2026-08-24T15:40:23.846+01:00  INFO 20004 --- [backend] [nio-8082-exec-3] c.t.backend.service.MessageServiceImpl   : Message created: id=aabb559e-5af6-4e09-b80d-12aac521300f, conversation=5d25691b-95e5-4811-89b8-483ecbe27802, sender=d31aee4d-6722-44a0-9220-bb1b60170be2
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  03:35 min
+[INFO] Finished at: 2026-08-24T15:40:59+01:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.5.2:run (default-cli) on project backend: Process terminated with exit code: -1 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException

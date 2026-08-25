@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,6 +37,7 @@ public class HandoverReminderScheduler {
     private final NotificationService notificationService;
 
     @Scheduled(cron = "0 */30 * * * *")
+    @Transactional
     public void sendDueHandoverReminders() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime soon = now.plusHours(2);

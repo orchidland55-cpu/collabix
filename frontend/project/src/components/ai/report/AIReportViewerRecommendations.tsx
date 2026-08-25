@@ -1,5 +1,6 @@
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Badge } from '../../ui/Badge';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 import { type Recommendation } from './AIReportViewerTypes';
 
 interface AIReportViewerRecommendationsProps {
@@ -33,7 +34,7 @@ export function AIReportViewerRecommendations({ recommendations }: AIReportViewe
                   <p className="text-body font-semibold text-text-primary">{rec.title}</p>
                   <Badge variant="soft" tone={pri.tone}>{pri.label}</Badge>
                 </div>
-                <p className="text-caption text-text-secondary">{rec.description}</p>
+                <MarkdownRenderer content={rec.description} className="text-caption" />
                 <div className="flex flex-col gap-1 pt-1 text-caption">
                   <p className="text-text-tertiary">
                     <span className="font-medium text-text-primary">Business Impact:</span> {rec.businessImpact}

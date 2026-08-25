@@ -12,6 +12,7 @@ import { PageLoader } from '../../components/ui/PageLoader';
 import { useToast } from '../../components/ui/Toast';
 import { useWorkspaceId } from '../../hooks/useWorkspaceId';
 import { useProjectList } from '../../services/project-hooks';
+import { useDepartmentList } from '../../services/department-hooks';
 import { useAuth } from '../../lib/auth-context';
 import {
   useMyHandoverEntries,
@@ -246,7 +247,12 @@ export function HandoverEntriesPage() {
 function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  // Department is auto-detected from the logged-in user; the backend only
+  // accepts entries created in the sender's own department.
   const userDepartmentId = user?.departmentId ?? '';
+  const { data: departments } = useDepartmentList(workspaceId);
+  const departmentName =
+    (departments ?? []).find((d) => d.id === userDepartmentId)?.name ?? user?.departmentName ?? '';
   const { data: projectsPage } = useProjectList(workspaceId, userDepartmentId || undefined);
   const projects = projectsPage?.content ?? [];
 
@@ -347,12 +353,14 @@ function EntryForm({ workspaceId, onClose, onSaved }: { workspaceId: string; onC
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {!userDepartmentId ? (
             <div className="flex items-end">
-              <p className="text-caption text-danger-600">Your department could not be determined. Contact support.</p>
+              <p className="text-caption text-danger-600">
+                Your department could not be determined. Make sure you are assigned to a department.
+              </p>
             </div>
           ) : (
             <Input
-              label="Department"
-              value={userDepartmentId}
+              label="Department (auto-detected)"
+              value={departmentName || userDepartmentId}
               disabled
             />
           )}

@@ -111,7 +111,7 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
   };
 
   const handleDelete = (e: EmployeeResponse) => {
-    if (!window.confirm(`Delete employee "${e.firstName} ${e.lastName}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete employee "${e.firstName} ${e.lastName}"? Their employment status will be set to Terminated.`)) return;
     deleteEmp.mutate(e.id, {
       onSuccess: () => toast({ title: 'Employee deleted', tone: 'success' }),
       onError: (err) => toast({ title: 'Failed to delete employee', description: err instanceof Error ? err.message : undefined, tone: 'danger' }),
@@ -229,9 +229,11 @@ export function EmployeesTab({ wsId, deptId }: { wsId: string; deptId: string })
                 <IconButton label="Edit" variant="ghost" size="sm" onClick={() => openEdit(e)}>
                   <Pencil className="h-4 w-4" />
                 </IconButton>
-                <IconButton label="Delete" variant="ghost" size="sm" className="text-danger-600" onClick={() => handleDelete(e)}>
-                  <Trash2 className="h-4 w-4" />
-                </IconButton>
+                {isActiveEmployee(e.employmentStatus) && (
+                  <IconButton label="Delete" variant="ghost" size="sm" className="text-danger-600" onClick={() => handleDelete(e)}>
+                    <Trash2 className="h-4 w-4" />
+                  </IconButton>
+                )}
               </div>
             </div>
           ))}

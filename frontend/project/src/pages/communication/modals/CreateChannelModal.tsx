@@ -12,9 +12,12 @@ type CreateChannelModalProps = Pick<ModalProps, 'open' | 'onClose'>;
 export function CreateChannelModal({ open, onClose }: CreateChannelModalProps) {
   const [searchParams] = useSearchParams();
   const wsId = searchParams.get('ws') ?? '';
+  const initialType = searchParams.get('type');
   const [name, setName] = useState('');
   const [topic, setTopic] = useState('');
-  const [type, setType] = useState<ConversationType>('WORKSPACE');
+  const [type, setType] = useState<ConversationType>(
+    initialType === 'DIRECT' ? 'DIRECT' : 'WORKSPACE',
+  );
   const [isPrivate, setIsPrivate] = useState(false);
   const createConversation = useCreateConversation(wsId);
 

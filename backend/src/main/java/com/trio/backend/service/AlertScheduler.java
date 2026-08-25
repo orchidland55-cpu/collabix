@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -40,6 +41,7 @@ public class AlertScheduler {
     private final AlertService alertService;
 
     @Scheduled(cron = "0 */30 * * * *")
+    @Transactional
     public void generateTaskAlerts() {
         Instant now = Instant.now();
 

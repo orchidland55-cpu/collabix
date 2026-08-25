@@ -11,6 +11,7 @@ export { AIPromptPreview } from './AIPromptPreview';
 export { AISuggestionCard } from './AISuggestionCard';
 export { AISearchInput } from './AISearchInput';
 export { AIEmptyState } from './AIEmptyState';
+export { MarkdownRenderer } from './MarkdownRenderer';
 export {
   AILoadingHero,
   AILoadingCard,

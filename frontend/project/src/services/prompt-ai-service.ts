@@ -4,7 +4,7 @@ export interface AIPromptResponse {
   id: string;
   code: string;
   name: string;
-  category: 'ANALYTICS' | 'HANDOVER' | 'KNOWLEDGE' | 'GENERAL';
+  category: 'ANALYTICS' | 'HANDOVER' | 'KNOWLEDGE' | 'REPORTS' | 'GENERAL';
   promptTemplate: string;
   active: boolean;
   description?: string;

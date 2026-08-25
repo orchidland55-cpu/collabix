@@ -9,8 +9,9 @@ import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import { useDepartmentList } from '../../services/department-hooks';
 import { useProjectList } from '../../services/project-hooks';
-import { useCreateHandoverEntry } from '../../services/handover-hooks';
+import { useCreateHandoverEntry, useSendHandover } from '../../services/handover-hooks';
 import { userService } from '../../services/user-service';
+import { useAuth } from '../../lib/auth-context';
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 
 export function CreateHandoverModal({
@@ -23,8 +24,13 @@ export function CreateHandoverModal({
   workspaceId: string;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { data: departments } = useDepartmentList(workspaceId);
-  const [departmentId, setDepartmentId] = useState('');
+  // Department is auto-detected from the logged-in user; the backend only
+  // accepts handovers created in the sender's own department.
+  const departmentId = user?.departmentId ?? '';
+  const departmentName =
+    (departments ?? []).find((d) => d.id === departmentId)?.name ?? (departmentId ? 'My department' : '');
   const { data: projectsPage } = useProjectList(workspaceId, departmentId || undefined);
   const projects = projectsPage?.content ?? [];
 
@@ -35,6 +41,7 @@ export function CreateHandoverModal({
   });
 
   const createMutation = useCreateHandoverEntry(workspaceId);
+  const sendMutation = useSendHandover(workspaceId);
 
   const [form, setForm] = useState({
     projectId: '',
@@ -50,7 +57,6 @@ export function CreateHandoverModal({
     if (open) {
       setForm({ projectId: '', receiverId: '', title: '', content: '', priority: 'MEDIUM', dueDate: '' });
       setErrors({});
-      setDepartmentId('');
     }
   }, [open]);
 
@@ -61,7 +67,7 @@ export function CreateHandoverModal({
 
   const handleSubmit = async () => {
     const next: Record<string, string> = {};
-    if (!departmentId) next.departmentId = 'Select a department';
+    if (!departmentId) next.departmentId = 'Your department could not be determined. Make sure you are assigned to a department.';
     if (!form.projectId) next.projectId = 'Select a project';
     if (!form.receiverId) next.receiverId = 'Select a receiver';
     if (!form.title.trim()) next.title = 'Title is required';
@@ -70,7 +76,7 @@ export function CreateHandoverModal({
     if (Object.keys(next).length > 0) return;
 
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         departmentId,
         projectId: form.projectId,
         receiverId: form.receiverId,
@@ -79,7 +85,18 @@ export function CreateHandoverModal({
         priority: form.priority as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
         dueDate: form.dueDate || undefined,
       });
-      toast({ title: 'Handover created', description: 'The handover draft has been created.', tone: 'success' });
+      try {
+        await sendMutation.mutateAsync({ entryId: created.id });
+      } catch {
+        toast({
+          title: 'Handover saved as draft',
+          description: 'The handover was created but could not be sent to the receiver yet.',
+          tone: 'warning',
+        });
+        onClose();
+        return;
+      }
+      toast({ title: 'Handover sent', description: 'The handover has been sent to the receiver.', tone: 'success' });
       onClose();
     } catch (err) {
       toast({
@@ -100,27 +117,22 @@ export function CreateHandoverModal({
       footer={
         <>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={createMutation.isPending} leftIcon={<Send />}>
+          <Button onClick={handleSubmit} loading={createMutation.isPending || sendMutation.isPending} leftIcon={<Send />}>
             Create & Send
           </Button>
         </>
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Select
-          label="Department"
-          value={departmentId}
-          onChange={(e) => {
-            setDepartmentId(e.target.value);
-            setField('projectId', '');
-          }}
-          invalid={!!errors.departmentId}
-          errorText={errors.departmentId}
-          options={[
-            { value: '', label: 'Select department' },
-            ...(departments ?? []).map((d) => ({ value: d.id, label: d.name })),
-          ]}
-        />
+        {departmentId ? (
+          <Input label="Department (auto-detected)" value={departmentName} disabled />
+        ) : (
+          <div className="flex items-end">
+            <p className="text-caption text-danger-600">
+              Your department could not be determined. Make sure you are assigned to a department.
+            </p>
+          </div>
+        )}
         <Select
           label="Project"
           value={form.projectId}

@@ -169,6 +169,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, []);
 
+  // Re-fetch the user profile on load so stored sessions stay in sync with the
+  // backend (e.g. department assignment added after the session was persisted).
+  useEffect(() => {
+    if (!state.accessToken) return;
+    let cancelled = false;
+    authService
+      .me()
+      .then((profile) => {
+        if (cancelled || !state.accessToken) return;
+        setState((prev) => {
+          if (!prev.accessToken) return prev;
+          const user = mapUserResponse(profile, prev.accessToken);
+          const next: AuthState = { ...prev, user };
+          persistAuth(next);
+          return next;
+        });
+      })
+      .catch(() => {
+        // Non-blocking: keep the stored profile on failure.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const signIn = useCallback(
     async (payload: LoginPayload): Promise<LoginResult> => {
       setIsRefreshing(true);

@@ -239,7 +239,7 @@ export function PerformanceReviewsTab({ wsId, deptId }: { wsId: string; deptId: 
               ]}
               helperText={
                 !employeesLoading && reviewEmployees.length === 0
-                  ? 'No employees found. Add employees in the Employees tab first.'
+                  ? 'No eligible employees. Terminated, resigned or retired employees are excluded — open the Employees tab, edit the employee and set their status back to Active.'
                   : undefined
               }
             />
