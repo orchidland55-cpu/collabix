@@ -1,0 +1,1 @@
+-- Intentionally empty: file_name column is kept in DB and mapped via entity CandidateAttachment.fileName

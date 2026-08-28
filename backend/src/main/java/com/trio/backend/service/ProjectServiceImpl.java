@@ -96,7 +96,7 @@ public class ProjectServiceImpl implements ProjectService {
         assertActiveWorkspaceMember(workspaceId, userId);
         departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
-        Project project = findActiveProjectInDepartment(workspaceId, departmentId, projectId);
+        Project project = findProjectInDepartment(workspaceId, departmentId, projectId);
 
         return projectMapper.toResponse(project);
     }
@@ -217,6 +217,21 @@ public class ProjectServiceImpl implements ProjectService {
 
         project.setStatus(WorkspaceStatus.ARCHIVED);
         projectRepository.save(project);
+    }
+
+    @Override
+    public void hardDelete(UUID workspaceId, UUID departmentId, UUID projectId) {
+
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        assertWorkspaceAdminOrOwner(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
+
+        Project project = findProjectInDepartment(workspaceId, departmentId, projectId);
+
+        // Removing the row cascades to all project-scoped children
+        // (tasks, documents, sprints, reports, ...).
+        projectRepository.delete(project);
     }
 
     @Override

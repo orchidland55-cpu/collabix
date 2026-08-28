@@ -58,8 +58,10 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
         UUID userId = getAuthenticatedUserId();
         aiScopeAuthorization.assertCanAccessKnowledge(workspaceId, departmentId, projectId);
 
+        UUID effectiveDepartmentId = resolveEffectiveDepartment(workspaceId, departmentId);
+
         Map<String, Object> collectedData = knowledgeDataCollector.collect(
-                workspaceId, departmentId, projectId, question);
+                workspaceId, effectiveDepartmentId, projectId, question);
 
         Integer totalFound = (Integer) collectedData.get("totalDocumentsFound");
         if (totalFound == null || totalFound == 0) {
@@ -76,7 +78,7 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
         executionRequest.setTask(AITask.KNOWLEDGE_SEARCH);
         executionRequest.setInput(question);
         executionRequest.setWorkspaceId(workspaceId);
-        executionRequest.setDepartmentId(departmentId);
+        executionRequest.setDepartmentId(effectiveDepartmentId);
         executionRequest.setProjectId(projectId);
         executionRequest.setUserId(userId);
         executionRequest.setContext(collectedData);
@@ -111,6 +113,8 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
         UUID userId = getAuthenticatedUserId();
         aiScopeAuthorization.assertCanAccessKnowledge(workspaceId, departmentId, projectId);
 
+        UUID effectiveDepartmentId = resolveEffectiveDepartment(workspaceId, departmentId);
+
         List<KnowledgeSource> results = new ArrayList<>();
 
         List<Document> documents;
@@ -118,11 +122,11 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
             documents = documentRepository.searchByTitleInProjectPaginated(
                     projectId, query, PageRequest.of(0, 20)).getContent();
         } else {
-            documents = documentRepository.searchByTitleInWorkspacePaginated(
-                    workspaceId, query, PageRequest.of(0, 20)).getContent();
+            documents = documentRepository.searchByTitleInDepartmentPaginated(
+                    effectiveDepartmentId, query, PageRequest.of(0, 20)).getContent();
         }
         for (Document doc : documents) {
-            if (departmentId != null && !doc.getProject().getDepartment().getId().equals(departmentId)) {
+            if (effectiveDepartmentId != null && !doc.getProject().getDepartment().getId().equals(effectiveDepartmentId)) {
                 continue;
             }
             results.add(KnowledgeSource.builder()
@@ -143,11 +147,11 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
             articles = knowledgeBaseRepository.searchByContentInProjectPaginated(
                     projectId, query, PageRequest.of(0, 20)).getContent();
         } else {
-            articles = knowledgeBaseRepository.searchByContentInWorkspacePaginated(
-                    workspaceId, query, PageRequest.of(0, 20)).getContent();
+            articles = knowledgeBaseRepository.searchByContentInDepartmentPaginated(
+                    effectiveDepartmentId, query, PageRequest.of(0, 20)).getContent();
         }
         for (KnowledgeBase kb : articles) {
-            if (departmentId != null && !kb.getProject().getDepartment().getId().equals(departmentId)) {
+            if (effectiveDepartmentId != null && !kb.getProject().getDepartment().getId().equals(effectiveDepartmentId)) {
                 continue;
             }
             results.add(KnowledgeSource.builder()
@@ -226,6 +230,18 @@ public class KnowledgeAIServiceImpl implements KnowledgeAIService {
             throw new BadRequestException("User is not authenticated.");
         }
         return user.getId();
+    }
+
+    /**
+     * Resolves the department scope used for data collection. When no department is
+     * supplied by the caller, falls back to the caller's primary department so that
+     * non-privileged users (Members/Managers) never query other departments' data.
+     */
+    private UUID resolveEffectiveDepartment(UUID workspaceId, UUID departmentId) {
+        if (departmentId != null) {
+            return departmentId;
+        }
+        return aiScopeAuthorization.resolveReadableDepartmentFilter(workspaceId).orElse(null);
     }
 
     private void assertActiveWorkspaceMember(UUID workspaceId, UUID userId) {

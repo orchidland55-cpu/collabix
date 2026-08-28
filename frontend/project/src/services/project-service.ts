@@ -45,6 +45,12 @@ export function restoreProject(workspaceId: string, departmentId: string, projec
   );
 }
 
+export function hardDeleteProject(workspaceId: string, departmentId: string, projectId: string) {
+  return apiClient.delete<void>(
+    `/workspaces/${workspaceId}/departments/${departmentId}/projects/${projectId}/hard-delete`
+  );
+}
+
 export function listArchivedProjects(workspaceId: string, departmentId: string) {
   return apiClient.get<ProjectResponse[]>(
     `/workspaces/${workspaceId}/departments/${departmentId}/projects/archived`

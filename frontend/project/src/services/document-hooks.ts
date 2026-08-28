@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentService } from './document-service';
 import type { CreateDocumentRequest, UpdateDocumentRequest } from '../pages/knowledge/types/document-types';
+import { api } from '../lib/api';
 
 const docKeys = {
   all: (wsId: string, deptId: string, projId: string) =>
@@ -156,5 +157,20 @@ export function useRejectDocument(wsId: string, deptId: string, projId: string) 
       qc.invalidateQueries({ queryKey: docKeys.all(wsId, deptId, projId) });
       qc.invalidateQueries({ queryKey: docKeys.workspace(wsId) });
     },
+  });
+}
+
+export function useDocumentFile(wsId: string, deptId: string, projId: string, docId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['document-file', wsId, deptId, projId, docId ?? ''],
+    queryFn: async () => {
+      const apiUrl = documentService.viewPath(wsId, deptId, projId, docId!);
+      const fullUrl = documentService.view(wsId, deptId, projId, docId!);
+      const response = await api.get<Blob>(apiUrl, { responseType: 'blob' });
+      return { blob: response.data as Blob, url: fullUrl };
+    },
+    enabled: !!wsId && !!deptId && !!projId && !!docId && enabled,
+    staleTime: Infinity,
+    gcTime: 5 * 60 * 1000,
   });
 }

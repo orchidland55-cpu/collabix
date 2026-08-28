@@ -217,11 +217,12 @@ function buildNavSections(
     return applyBadge(sections, notifCount, alertCount);
   }
 
-  const dashboardId = isManager(roles) && user?.departmentId ? 'dept-dashboard' : 'dashboard';
+  const canSeeDept = !!user?.departmentId;
+  const dashboardId = canSeeDept ? 'dept-dashboard' : 'dashboard';
   const sections: { title: string; items: NavItem[] }[] = [
     {
       title: '',
-      items: isManager(roles) && user?.departmentId
+      items: canSeeDept
         ? [
             { id: dashboardId, label: 'Department Dashboard', icon: <LayoutGrid /> },
             { id: 'my-dashboard', label: 'Personal Dashboard', icon: <UserIcon /> },
@@ -230,7 +231,7 @@ function buildNavSections(
     },
   ];
 
-  if (isManager(roles) && user?.departmentId) {
+  if (canSeeDept) {
     const type = detectDeptType(user.departmentName);
     sections.push({
       title: user.departmentName ?? deptTypeLabel(type),

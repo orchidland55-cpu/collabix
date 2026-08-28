@@ -68,7 +68,7 @@ export function DocumentsPage() {
       return { deptId: departmentId, projId: projectId };
     }
     const project = projectById.get(doc.projectId);
-    return { deptId: project?.departmentId ?? '', projId: doc.projectId };
+    return { deptId: doc.departmentId ?? project?.departmentId ?? '', projId: doc.projectId };
   };
 
   const docsData = scopedToProject ? projectDocsData : workspaceDocsData;
@@ -305,7 +305,7 @@ function documentDetailPath(
     return `./${doc.id}?ws=${workspaceId}&dept=${departmentId}&proj=${projectId}`;
   }
   const project = projectById.get(doc.projectId);
-  const dept = project?.departmentId ?? '';
+  const dept = doc.departmentId ?? project?.departmentId ?? '';
   return `./${doc.id}?ws=${workspaceId}&dept=${dept}&proj=${doc.projectId}`;
 }
 

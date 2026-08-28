@@ -574,7 +574,7 @@ function AppRoutes() {
         <Route path="tasks/:taskId" element={<TaskDetailsRoute />} />
         <Route path="collaboration" element={<Suspense fallback={<PageLoader />}><CollaborationPage /></Suspense>} />
         <Route path="documents" element={<Suspense fallback={<PageLoader />}><DocumentsPage /></Suspense>} />
-        <Route path="documents/:documentId" element={<Suspense fallback={<PageLoader />}><DocumentDetailPage /></Suspense>} />
+        <Route path="documents/:docId" element={<Suspense fallback={<PageLoader />}><DocumentDetailPage /></Suspense>} />
         <Route path="knowledge" element={<Suspense fallback={<PageLoader />}><KnowledgeBasePage /></Suspense>} />
         <Route path="handover" element={<Suspense fallback={<PageLoader />}><HandoverJournalPage /></Suspense>} />
         <Route path="handover-entries" element={<Suspense fallback={<PageLoader />}><HandoverEntriesPage /></Suspense>} />

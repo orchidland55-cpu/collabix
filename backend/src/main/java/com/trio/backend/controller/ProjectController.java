@@ -140,7 +140,7 @@ public class ProjectController {
 
     @DeleteMapping("/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_DELETE')")
+    @PreAuthorize("@departmentAuth.canManageDepartmentProjects(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_DELETE')")
     @Operation(summary = "Delete (archive) a project", security = @SecurityRequirement(name = "bearer"))
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Project archived"),
@@ -154,5 +154,23 @@ public class ProjectController {
             @PathVariable UUID projectId
     ) {
         projectService.delete(workspaceId, departmentId, projectId);
+    }
+
+    @DeleteMapping("/{projectId}/hard-delete")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@workspaceAuth.canDeleteWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'PROJECT_DELETE')")
+    @Operation(summary = "Permanently delete (hard delete) a project", security = @SecurityRequirement(name = "bearer"))
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Project permanently deleted"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User without permission"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    public void hardDelete(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId,
+            @PathVariable UUID projectId
+    ) {
+        projectService.hardDelete(workspaceId, departmentId, projectId);
     }
 }

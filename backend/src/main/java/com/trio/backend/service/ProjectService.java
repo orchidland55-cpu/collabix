@@ -27,5 +27,7 @@ public interface ProjectService {
 
     void delete(UUID workspaceId, UUID departmentId, UUID projectId);
 
+    void hardDelete(UUID workspaceId, UUID departmentId, UUID projectId);
+
     ProjectResponse restore(UUID workspaceId, UUID departmentId, UUID projectId);
 }

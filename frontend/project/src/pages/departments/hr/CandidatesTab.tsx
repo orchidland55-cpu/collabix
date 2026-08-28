@@ -14,7 +14,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useCandidatesList, useCreateCandidate, useUpdateCandidate, useDeleteCandidate, useChangeCandidateStatus, useCandidateTimeline, useCandidateNotes, useCreateCandidateNote, useCandidateInterviews, useCandidateStats } from '../../../services/candidate-hooks';
 import type { CandidateResponse, CreateCandidateRequest } from '../../../services/candidate-service';
 import { useCandidateAttachments, useUploadCandidateAttachment, useDeleteCandidateAttachment, useCandidateAttachmentStats } from '../../../services/candidate-attachment-hooks';
-import type { CandidateAttachmentResponse } from '../../../services/candidate-attachment-service';
+import type { CandidateAttachmentResponse, CandidateAttachmentType } from '../../../services/candidate-attachment-service';
 import { candidateAttachmentService } from '../../../services/candidate-attachment-service';
 import { DocumentViewerModal } from '../../../components/documents/DocumentViewerModal';
 import { downloadAuthenticatedFile } from '../../../lib/file-download';
@@ -57,6 +57,7 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
   const [noteForm, setNoteForm] = useState({ title: '', category: 'GENERAL', priority: 'MEDIUM', content: '', visibility: 'DEPARTMENT' });
   const createNote = useCreateCandidateNote(wsId, deptId, detail?.id ?? '');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadAttachmentType, setUploadAttachmentType] = useState<string>('CV');
   const [viewer, setViewer] = useState<{ attachment: CandidateAttachmentResponse } | null>(null);
 
   const filtered = candidates.filter((c) => {
@@ -111,9 +112,9 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
 
   const handleUpload = () => {
     if (!detail || !uploadFile) return;
-    uploadAttachment.mutate({ file: uploadFile, attachmentType: 'CV' }, {
-      onSuccess: () => { toast({ title: 'Resume uploaded', tone: 'success' }); setUploadFile(null); },
-      onError: () => toast({ title: 'Failed to upload resume', tone: 'danger' }),
+    uploadAttachment.mutate({ file: uploadFile, attachmentType: uploadAttachmentType as CandidateAttachmentType }, {
+      onSuccess: () => { toast({ title: 'Document uploaded', tone: 'success' }); setUploadFile(null); },
+      onError: () => toast({ title: 'Failed to upload document', tone: 'danger' }),
     });
   };
 
@@ -281,13 +282,27 @@ export function CandidatesTab({ wsId, deptId }: { wsId: string; deptId: string }
 
             <Card>
               <CardBody className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-2">
                   <p className="text-body font-semibold text-text-primary">Resume & Attachments</p>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-caption text-text-secondary">Upload CV:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      containerClassName="w-44"
+                      value={uploadAttachmentType}
+                      onChange={(e) => setUploadAttachmentType(e.target.value)}
+                      options={[
+                        { value: 'CV', label: 'CV' },
+                        { value: 'COVER_LETTER', label: 'Cover Letter' },
+                        { value: 'DIPLOMA', label: 'Diploma' },
+                        { value: 'CERTIFICATE', label: 'Certificate' },
+                        { value: 'PORTFOLIO', label: 'Portfolio' },
+                        { value: 'IDENTITY', label: 'Identity' },
+                        { value: 'RECOMMENDATION', label: 'Recommendation' },
+                        { value: 'OTHER', label: 'Other' },
+                      ]}
+                    />
                     <input type="file" className="text-2xs max-w-[180px]" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
                     <Button size="sm" leftIcon={<Upload />} onClick={handleUpload} disabled={!uploadFile}>Upload</Button>
-                  </label>
+                  </div>
                 </div>
                 {attachments.length === 0 ? (
                   <p className="text-caption text-text-tertiary">No attachments uploaded.</p>

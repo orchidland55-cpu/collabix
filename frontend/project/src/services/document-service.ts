@@ -53,6 +53,15 @@ export const documentService = {
   download: (wsId: string, deptId: string, projId: string, docId: string): string =>
     `${getApiBaseUrl()}${base(wsId, deptId, projId)}/${docId}/download`,
 
+  downloadPath: (wsId: string, deptId: string, projId: string, docId: string): string =>
+    `${base(wsId, deptId, projId)}/${docId}/download`,
+
+  view: (wsId: string, deptId: string, projId: string, docId: string): string =>
+    `${getApiBaseUrl()}${base(wsId, deptId, projId)}/${docId}/view`,
+
+  viewPath: (wsId: string, deptId: string, projId: string, docId: string): string =>
+    `${base(wsId, deptId, projId)}/${docId}/view`,
+
   getVersions: (wsId: string, deptId: string, projId: string, docId: string) =>
     apiClient.get<DocumentResponse[]>(`${base(wsId, deptId, projId)}/${docId}/versions`),
 

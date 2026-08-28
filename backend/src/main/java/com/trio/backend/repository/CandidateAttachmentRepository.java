@@ -35,4 +35,13 @@ public interface CandidateAttachmentRepository extends JpaRepository<CandidateAt
     List<Object[]> countByTypeGrouped(@Param("departmentId") UUID departmentId);
 
     boolean existsByCandidate_IdAndAttachmentType(UUID candidateId, AttachmentType attachmentType);
+
+    @Query("SELECT COUNT(a) FROM CandidateAttachment a WHERE a.candidate.department.id = :departmentId")
+    long countByDepartmentId(@Param("departmentId") UUID departmentId);
+
+    @Query("SELECT CASE WHEN COUNT(a) > 0 THEN true ELSE false END FROM CandidateAttachment a WHERE a.candidate.department.id = :departmentId AND a.attachmentType = :type")
+    boolean existsByDepartmentIdAndAttachmentType(@Param("departmentId") UUID departmentId, @Param("type") AttachmentType type);
+
+    @Query("SELECT COUNT(a) FROM CandidateAttachment a WHERE a.candidate.department.id = :departmentId AND a.attachmentType = :type")
+    long countByDepartmentIdAndAttachmentType(@Param("departmentId") UUID departmentId, @Param("type") AttachmentType type);
 }

@@ -7,6 +7,7 @@ import {
   updateProject,
   deleteProject,
   restoreProject,
+  hardDeleteProject,
   listArchivedProjects,
 } from './project-service';
 import { useWorkspaceDetail } from './workspace-hooks';
@@ -116,6 +117,7 @@ export function useDeleteProject() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: projectKeys.paginated(variables.wsId, variables.deptId) });
       qc.invalidateQueries({ queryKey: projectKeys.archived(variables.wsId, variables.deptId) });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(variables.wsId, variables.deptId, variables.projectId) });
     },
   });
 }
@@ -142,6 +144,26 @@ export function useRestoreProject() {
   });
 }
 
+export function useHardDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      wsId,
+      deptId,
+      projectId,
+    }: {
+      wsId: string;
+      deptId: string;
+      projectId: string;
+    }) => hardDeleteProject(wsId, deptId, projectId),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: projectKeys.paginated(variables.wsId, variables.deptId) });
+      qc.invalidateQueries({ queryKey: projectKeys.archived(variables.wsId, variables.deptId) });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(variables.wsId, variables.deptId, variables.projectId) });
+    },
+  });
+}
+
 export function useArchivedProjects(wsId: string | undefined, deptId: string | undefined) {
   return useQuery<ProjectResponse[]>({
     queryKey: projectKeys.archived(wsId!, deptId!),
@@ -155,6 +177,7 @@ export interface ProjectAccess {
   canUpdate: boolean;
   canArchive: boolean;
   canRestore: boolean;
+  canHardDelete: boolean;
   isLoading: boolean;
 }
 
@@ -174,8 +197,9 @@ export function useProjectAccess(wsId: string | undefined): ProjectAccess {
   return {
     canCreate: !!user && hasPermission(user, 'PROJECT_CREATE') && canManageProjects,
     canUpdate: !!user && hasPermission(user, 'PROJECT_UPDATE') && canManageProjects,
-    canArchive: !!user && hasPermission(user, 'PROJECT_DELETE') && (superAdmin || globalAdmin || isWorkspaceOwner),
+    canArchive: !!user && hasPermission(user, 'PROJECT_DELETE') && canManageProjects,
     canRestore: !!user && hasPermission(user, 'PROJECT_UPDATE') && canManageProjects,
+    canHardDelete: !!user && hasPermission(user, 'PROJECT_DELETE') && (superAdmin || isWorkspaceOwner),
     isLoading,
   };
 }

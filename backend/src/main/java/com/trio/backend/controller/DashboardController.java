@@ -69,7 +69,7 @@ public class DashboardController {
      * @return ApiResponse containing the Workspace Dashboard
      */
     @GetMapping("/dashboard/workspace")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DASHBOARD_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'DASHBOARD_VIEW')")
     @Operation(
             summary = "Workspace Dashboard",
             description = "Returns the workspace statistics: departments, teams, members, projects, tasks, notifications and recent activities.",

@@ -307,17 +307,68 @@ class DocumentModuleE2EIntegrationTest {
     }
 
     @Test
-    @DisplayName("Manager with DOCUMENT_UPLOAD permission blocked by workspace role gate on write")
-    void managerUploadBlockedByWorkspaceRole() throws Exception {
+    @DisplayName("Manager with DOCUMENT_UPLOAD permission can upload to their department")
+    void managerWithUploadPermissionCanUpload() throws Exception {
         ProjectIsolationTestFixtures.DepartmentFixture dept = fixtures.department("Development");
 
-        mockMvc.perform(post(documentsPath(dept))
-                        .header("Authorization", bearer(dept.managerToken()))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title":"mgr-upload","fileName":"m.txt","mimeType":"text/plain","fileSize":1,"storagePath":"test/m.txt"}
-                                """))
+        byte[] payload = "manager upload payload".getBytes(StandardCharsets.UTF_8);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "mgr-upload.txt", "text/plain", payload);
+
+        mockMvc.perform(multipart(documentsPath(dept) + "/upload")
+                        .file(file)
+                        .param("title", "mgr-upload")
+                        .header("Authorization", bearer(dept.managerToken())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fileName").value("mgr-upload.txt"));
+
+        mockMvc.perform(get(documentsPath(dept))
+                        .header("Authorization", bearer(dept.managerToken())))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Member without DOCUMENT_UPLOAD permission cannot upload")
+    void memberUploadForbidden() throws Exception {
+        ProjectIsolationTestFixtures.DepartmentFixture dept = fixtures.department("Development");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "member-upload.txt", "text/plain", "member upload".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart(documentsPath(dept) + "/upload")
+                        .file(file)
+                        .param("title", "member-upload")
+                        .header("Authorization", bearer(dept.memberToken())))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Manager can open their own uploaded document via workspace-scoped path using departmentId")
+    void managerOpensOwnUploadedDocument() throws Exception {
+        ProjectIsolationTestFixtures.DepartmentFixture dept = fixtures.department("Development");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "open-me.txt", "text/plain", "open me content".getBytes(StandardCharsets.UTF_8));
+
+        MvcResult upload = mockMvc.perform(multipart(documentsPath(dept) + "/upload")
+                        .file(file)
+                        .param("title", "open-me")
+                        .header("Authorization", bearer(dept.managerToken())))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(upload.getResponse().getContentAsString()).path("data");
+        String docId = data.path("id").asText();
+        String projectId = data.path("projectId").asText();
+        String departmentId = data.path("departmentId").asText();
+
+        assertTrue(!departmentId.isBlank(), "DocumentResponse must include departmentId");
+
+        mockMvc.perform(get("/api/workspaces/" + fixtures.getWorkspaceId()
+                        + "/departments/" + departmentId + "/projects/" + projectId + "/documents/" + docId)
+                        .header("Authorization", bearer(dept.managerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(docId));
     }
 
     @Test
@@ -350,7 +401,7 @@ class DocumentModuleE2EIntegrationTest {
 
     @Test
     @DisplayName("Workspace-wide list exposes cross-department documents to any member with read permission")
-    void workspaceListCrossDepartmentLeak() throws Exception {
+    void workspaceListDoesNotLeakAcrossDepartments() throws Exception {
         ProjectIsolationTestFixtures.DepartmentFixture ai = fixtures.department("AI");
 
         mockMvc.perform(post(documentsPath(ai))
@@ -379,7 +430,7 @@ class DocumentModuleE2EIntegrationTest {
                 }
             }
         }
-        assertTrue(foundAiDoc, "Workspace list returns documents from other departments — isolation gap");
+        assertFalse(foundAiDoc, "Workspace list must not return documents from departments the user cannot access");
     }
 
     @Test

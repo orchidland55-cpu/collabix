@@ -33,6 +33,11 @@ public class DocumentResponse {
     private UUID projectId;
 
     /**
+     * The ID of the department the document's project belongs to.
+     */
+    private UUID departmentId;
+
+    /**
      * The ID of the task this document is associated with.
      * Null if the document is at project level.
      */

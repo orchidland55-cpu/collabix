@@ -69,6 +69,7 @@ public class CandidateAttachmentServiceImpl implements CandidateAttachmentServic
         CandidateAttachment attachment = CandidateAttachment.builder()
                 .candidate(candidate)
                 .attachmentType(attachmentType)
+                .fileName(originalFileName)
                 .originalFileName(originalFileName)
                 .storedFileName(storedFileName)
                 .fileExtension(extension)
@@ -103,6 +104,7 @@ public class CandidateAttachmentServiceImpl implements CandidateAttachmentServic
         String storagePath = storageService.store(content, originalFileName, file.getContentType());
         String storedFileName = storagePath;
 
+        existing.setFileName(originalFileName);
         existing.setOriginalFileName(originalFileName);
         existing.setStoredFileName(storedFileName);
         existing.setFileExtension(extension);
@@ -172,10 +174,10 @@ public class CandidateAttachmentServiceImpl implements CandidateAttachmentServic
         findActiveDepartment(workspaceId, departmentId);
 
         AttachmentStatistics stats = new AttachmentStatistics();
-        stats.setTotalAttachments(attachmentRepository.countByCandidate_Id(departmentId));
+        stats.setTotalAttachments(attachmentRepository.countByDepartmentId(departmentId));
         stats.setTotalStorageBytes(attachmentRepository.totalStorageByDepartmentId(departmentId));
-        stats.setHasCv(attachmentRepository.existsByCandidate_IdAndAttachmentType(departmentId, AttachmentType.CV));
-        stats.setCertificatesCount(attachmentRepository.countByCandidate_IdAndAttachmentType(departmentId, AttachmentType.CERTIFICATE));
+        stats.setHasCv(attachmentRepository.existsByDepartmentIdAndAttachmentType(departmentId, AttachmentType.CV));
+        stats.setCertificatesCount(attachmentRepository.countByDepartmentIdAndAttachmentType(departmentId, AttachmentType.CERTIFICATE));
 
         Map<AttachmentType, Long> byType = new EnumMap<>(AttachmentType.class);
         for (Object[] row : attachmentRepository.countByTypeGrouped(departmentId)) {

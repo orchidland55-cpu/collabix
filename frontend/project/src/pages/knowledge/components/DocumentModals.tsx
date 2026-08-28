@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, FileText, Archive, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, Archive, Trash2, RotateCcw, AlertTriangle, X } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Textarea } from '../../../components/ui/Textarea';
 import { Select } from '../../../components/ui/Select';
 import { Button } from '../../../components/ui/Button';
+import { useToast } from '../../../components/ui/Toast';
 import {
   useUploadDocument,
   useUpdateDocument,
@@ -16,6 +17,20 @@ import { useWorkspaceProjects } from '../../../services/project-hooks';
 import type { DocumentResponse } from '../types/document-types';
 import { formatFileSize } from '../types/document-types';
 import { getUploadErrorMessage, logUploadError } from '../../../lib/upload-error';
+
+// Keep in sync with the backend FileValidationService allow-list.
+const ALLOWED_UPLOAD_EXTENSIONS = [
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'txt', 'csv', 'json', 'xml', 'zip', 'tar', 'gz',
+];
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB, matches backend default limit
+
+function getExtension(name: string): string {
+  const idx = name.lastIndexOf('.');
+  return idx > 0 ? name.substring(idx + 1).toLowerCase() : '';
+}
 
 /* ------------------------------------------------------------------ */
 /*  UploadDocumentModal                                                */
@@ -30,6 +45,7 @@ export interface UploadDocumentModalProps {
 }
 
 export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId = '' }: UploadDocumentModalProps) {
+  const { toast } = useToast();
   const needsProjectSelection = !deptId || !projId;
   const uploadMutation = useUploadDocument(wsId, deptId || undefined, projId || undefined);
   const { data: projectsData, isLoading: projectsLoading } = useWorkspaceProjects(needsProjectSelection ? wsId : undefined);
@@ -41,6 +57,7 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId
   const [category, setCategory] = useState('');
   const [tags, setTags] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProject = useMemo(
@@ -60,19 +77,50 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId
       setCategory('');
       setTags('');
       setError(null);
+      setDragActive(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [isOpen, projId]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
+  const selectFile = (selected: File | null) => {
     setFile(selected);
     setError(null);
+    if (selected) {
+      const ext = getExtension(selected.name);
+      if (selected.size > MAX_UPLOAD_BYTES) {
+        setError('This file exceeds the maximum allowed size (10MB).');
+      } else if (ALLOWED_UPLOAD_EXTENSIONS.length > 0 && !ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
+        setError('This file type is not supported.');
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    selectFile(e.target.files?.[0] ?? null);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragActive(false);
+    if (uploadMutation.isPending) return;
+    selectFile(e.dataTransfer.files?.[0] ?? null);
+  };
+
+  const openPicker = () => {
+    if (!uploadMutation.isPending) fileInputRef.current?.click();
   };
 
   const handleSubmit = async () => {
     if (!file) {
       setError('Please select a file to upload.');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('This file exceeds the maximum allowed size (10MB).');
+      return;
+    }
+    if (ALLOWED_UPLOAD_EXTENSIONS.length > 0 && !ALLOWED_UPLOAD_EXTENSIONS.includes(getExtension(file.name))) {
+      setError('This file type is not supported.');
       return;
     }
     if (!effectiveDeptId || !effectiveProjId) {
@@ -90,6 +138,7 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId
         departmentId: effectiveDeptId,
         projectId: effectiveProjId,
       });
+      toast({ title: 'Success', description: 'Document uploaded successfully.', tone: 'success' });
       onClose();
     } catch (err) {
       logUploadError('project-document', err);
@@ -108,9 +157,9 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId
       size="md"
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={uploadMutation.isPending}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={!canSubmit} leftIcon={<Upload className="h-4 w-4" />}>
-            {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+            {uploadMutation.isPending ? 'Uploading...' : 'Upload Document'}
           </Button>
         </div>
       }
@@ -133,22 +182,61 @@ export function UploadDocumentModal({ isOpen, onClose, wsId, deptId = '', projId
             ]}
           />
         )}
+
         <div>
           <label className="mb-1.5 block text-caption font-medium text-text-secondary">File *</label>
           <input
             ref={fileInputRef}
             type="file"
+            className="hidden"
             onChange={handleFileChange}
-            className="block w-full text-caption text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-accent-50 file:px-3 file:py-1.5 file:text-caption file:font-medium file:text-accent-700 dark:file:bg-accent-100/10 dark:file:text-accent-400"
           />
-          {file && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
-              <FileText className="h-4 w-4 shrink-0 text-text-tertiary" />
-              <div className="min-w-0 flex-1 truncate text-caption text-text-primary">{file.name}</div>
-              <div className="shrink-0 text-2xs text-text-tertiary">{formatFileSize(file.size)}</div>
+          {!file ? (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={openPicker}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); }}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={handleDrop}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                dragActive
+                  ? 'border-accent-500 bg-accent-50 dark:bg-accent-100/10'
+                  : 'border-border-subtle bg-surface-2 hover:border-border-default'
+              }`}
+            >
+              <Upload className="h-7 w-7 text-text-tertiary" />
+              <p className="text-caption text-text-primary">
+                <span className="font-medium text-accent-700 dark:text-accent-400">Drag and drop a file here</span>
+                {' '}or click to browse
+              </p>
+              <p className="text-2xs text-text-tertiary">
+                Supported: PDF, DOC/DOCX, images, spreadsheets, ZIP — up to 10MB
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
+              <FileText className="h-5 w-5 shrink-0 text-text-tertiary" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-caption font-medium text-text-primary">{file.name}</div>
+                <div className="text-2xs text-text-tertiary">
+                  {getExtension(file.name).toUpperCase() || 'File'} · {formatFileSize(file.size)}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => selectFile(null)}
+                disabled={uploadMutation.isPending}
+                leftIcon={<X className="h-4 w-4" />}
+                aria-label="Remove file"
+              >
+                Remove
+              </Button>
             </div>
           )}
         </div>
+
         <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional document title" />
         <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" rows={3} />
         <div className="grid grid-cols-2 gap-4">

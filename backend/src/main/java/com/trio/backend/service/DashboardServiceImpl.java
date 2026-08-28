@@ -117,6 +117,7 @@ public class DashboardServiceImpl implements DashboardService {
         // A department manager sees only their primary department's data.
         // Admins, super-admins and other roles keep the workspace-wide scope.
         UUID departmentScope = resolvePersonalDepartmentScope(workspaceId, authenticatedUserId);
+        UUID feedScope = resolveFeedDepartmentScope(workspaceId, authenticatedUserId);
 
         // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Personal Widgets (user-specific, honest) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
         response.setMyTasks(buildPersonalTasks(workspaceId, authenticatedUserId, departmentScope));
@@ -128,10 +129,10 @@ public class DashboardServiceImpl implements DashboardService {
         response.setRecentActivities(buildPersonalRecentActivities(workspaceId, authenticatedUserId));
 
         // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Workspace Feed (honest label) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-        response.setRecentWorkspaceProjects(buildRecentWorkspaceProjects(workspaceId, departmentScope));
-        response.setRecentDocuments(buildRecentDocuments(workspaceId, departmentScope));
+        response.setRecentWorkspaceProjects(buildRecentWorkspaceProjects(workspaceId, feedScope));
+        response.setRecentDocuments(buildRecentDocuments(workspaceId, feedScope));
         response.setKnowledgeArticles(buildKnowledgeArticles(workspaceId));
-        response.setWorkspaceActivities(buildWorkspaceActivities(workspaceId, departmentScope));
+        response.setWorkspaceActivities(buildWorkspaceActivities(workspaceId, feedScope));
 
         return response;
     }
@@ -172,6 +173,39 @@ public class DashboardServiceImpl implements DashboardService {
         boolean isManager = user.getUserRoles().stream()
                 .anyMatch(ur -> ur.getRole().getName() == RoleName.MANAGER);
         if (!isManager) {
+            return null;
+        }
+
+        return user.getPrimaryDepartment().getId();
+    }
+
+    /**
+     * Determines the department scope used for the workspace-wide feed widgets
+     * (recent projects, documents and activities) shown on the personal dashboard.
+     *
+     * <p>Workspace OWNER/ADMIN and global SUPER_ADMIN/ADMIN keep a workspace-wide
+     * feed. Every other user (including Members) is scoped to their primary
+     * department so that cross-department content is never surfaced to a member
+     * of a different department.</p>
+     *
+     * @return the department ID to scope the feed to, or {@code null} for workspace-wide
+     */
+    private UUID resolveFeedDepartmentScope(UUID workspaceId, UUID userId) {
+        User user = userRepository.findByIdWithRolesAndPrimaryDepartment(userId).orElse(null);
+        if (user == null || user.getPrimaryDepartment() == null) {
+            return null;
+        }
+
+        if (user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole().getName() == RoleName.SUPER_ADMIN)) {
+            return null;
+        }
+
+        WorkspaceMember member = workspaceMemberRepository
+                .findByWorkspaceMemberId_WorkspaceIdAndWorkspaceMemberId_UserId(workspaceId, userId)
+                .orElse(null);
+        if (member != null
+                && (member.getRole() == WorkspaceRole.OWNER || member.getRole() == WorkspaceRole.ADMIN)) {
             return null;
         }
 

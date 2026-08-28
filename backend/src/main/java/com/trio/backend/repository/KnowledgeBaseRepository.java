@@ -241,6 +241,25 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBase, UU
     );
 
     /**
+     * Search knowledge base articles by content within a department.
+     * Used to scope workspace-wide knowledge searches to the caller's own department.
+     */
+    @Query("""
+            SELECT kb FROM KnowledgeBase kb
+            WHERE kb.project.department.id = :departmentId
+            AND (LOWER(kb.title) LIKE LOWER(CONCAT('%', :searchTerm, '%'))
+                 OR LOWER(kb.content) LIKE LOWER(CONCAT('%', :searchTerm, '%'))
+                 OR LOWER(kb.summary) LIKE LOWER(CONCAT('%', :searchTerm, '%')))
+            AND kb.status = 'ACTIVE'
+            ORDER BY kb.isPinned DESC, kb.createdAt DESC
+            """)
+    Page<KnowledgeBase> searchByContentInDepartmentPaginated(
+            @Param("departmentId") UUID departmentId,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable
+    );
+
+    /**
      * Count articles matching content search in a project.
      * Useful for search result count.
      */

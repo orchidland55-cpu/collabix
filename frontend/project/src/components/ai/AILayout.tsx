@@ -21,8 +21,8 @@ export function AILayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const {
-    canGenerateAnalytics,
-    canGenerateReports,
+    canViewAnalytics,
+    canViewReports,
     canGenerateHandover,
     canReadHandover,
     canUseKnowledgeAI,
@@ -34,11 +34,11 @@ export function AILayout() {
     { id: 'ai-conversations', label: 'Conversations', icon: MessageSquare, path: '/app/ai/conversations', visible: true },
     { id: 'ai-prompts', label: 'Prompt Library', icon: BookMarked, path: '/app/ai/prompts', visible: true },
     { id: 'ai-history', label: 'History & Reports', icon: Clock, path: '/app/ai/history', visible: canReadReports },
-    { id: 'ai-analytics', label: 'Analytics AI', icon: BarChart3, path: '/app/ai/analytics', visible: canGenerateAnalytics },
+    { id: 'ai-analytics', label: 'Analytics AI', icon: BarChart3, path: '/app/ai/analytics', visible: canViewAnalytics },
     { id: 'ai-handover', label: 'Handover AI', icon: ScrollText, path: '/app/ai/handover', visible: canGenerateHandover || canReadHandover },
     { id: 'ai-knowledge', label: 'Knowledge AI', icon: BookOpen, path: '/app/ai/knowledge', visible: canUseKnowledgeAI },
-    { id: 'ai-reports', label: 'Reporting AI', icon: FileText, path: '/app/ai/reports', visible: canGenerateReports },
-  ], [canGenerateAnalytics, canGenerateReports, canGenerateHandover, canReadHandover, canUseKnowledgeAI, canReadReports]);
+    { id: 'ai-reports', label: 'Reporting AI', icon: FileText, path: '/app/ai/reports', visible: canViewReports },
+  ], [canViewAnalytics, canViewReports, canGenerateHandover, canReadHandover, canUseKnowledgeAI, canReadReports]);
 
   const visibleItems = aiNavItems.filter((item) => item.visible);
 

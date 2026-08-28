@@ -38,7 +38,7 @@ public class DocumentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DOCUMENT_UPLOAD')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DOCUMENT_UPLOAD')")
     @Operation(
             summary = "Create a document",
             security = @SecurityRequirement(name = "bearer")
@@ -64,7 +64,7 @@ public class DocumentController {
 
     @PostMapping("/upload")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DOCUMENT_UPLOAD')")
+    @PreAuthorize("@departmentAuth.canViewDepartment(#workspaceId, #departmentId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DOCUMENT_UPLOAD')")
     @Operation(
             summary = "Upload a document file",
             security = @SecurityRequirement(name = "bearer")
@@ -303,6 +303,33 @@ public class DocumentController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(doc.getMimeType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + doc.getFileName() + "\"")
+                .body(resource);
+    }
+
+    @GetMapping("/{documentId}/view")
+    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'DOCUMENT_READ')")
+    @Operation(
+            summary = "View a document inline in the browser",
+            security = @SecurityRequirement(name = "bearer")
+    )
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "File rendered inline"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User without permission"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Document not found")
+    })
+    public ResponseEntity<Resource> view(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID departmentId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID documentId
+    ) {
+        DocumentResponse doc = documentService.getById(workspaceId, departmentId, projectId, documentId);
+        Resource resource = documentService.download(workspaceId, departmentId, projectId, documentId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(doc.getMimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + doc.getFileName() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
                 .body(resource);
     }
 

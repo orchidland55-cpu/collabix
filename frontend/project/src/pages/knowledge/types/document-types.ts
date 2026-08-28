@@ -3,6 +3,7 @@ export type DocumentStatus = 'ACTIVE' | 'ARCHIVED' | 'DELETED';
 export interface DocumentResponse {
   id: string;
   projectId: string;
+  departmentId?: string;
   taskId?: string;
   title: string;
   description?: string;

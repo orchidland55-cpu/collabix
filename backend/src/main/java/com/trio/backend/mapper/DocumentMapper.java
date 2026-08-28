@@ -22,6 +22,8 @@ uses = InstantToLocalDateTimeMapper.class
 public interface DocumentMapper {
 
     @Mapping(source = "documentVersion", target = "version")
+    @Mapping(target = "projectId", expression = "java(document.getProject().getId())")
+    @Mapping(target = "departmentId", expression = "java(document.getProject().getDepartment().getId())")
     DocumentResponse toResponse(Document document);
 
     @Mapping(target = "id", ignore = true)

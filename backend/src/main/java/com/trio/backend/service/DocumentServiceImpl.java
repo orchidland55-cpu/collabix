@@ -22,6 +22,8 @@ import com.trio.backend.repository.ProjectRepository;
 import com.trio.backend.repository.TaskRepository;
 import com.trio.backend.repository.WorkspaceMemberRepository;
 import com.trio.backend.repository.WorkspaceRepository;
+import com.trio.backend.security.department.DepartmentScopeGuard;
+import com.trio.backend.storage.FileValidationService;
 import com.trio.backend.security.user.CustomUserDetails;
 import com.trio.backend.storage.StorageService;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +55,8 @@ public class DocumentServiceImpl implements DocumentService {
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final DocumentMapper documentMapper;
+    private final DepartmentScopeGuard departmentScopeGuard;
+    private final FileValidationService fileValidationService;
     private final StorageService storageService;
     private final NotificationService notificationService;
     private final AlertGenerationHelper alertGenerationHelper;
@@ -67,6 +71,7 @@ public class DocumentServiceImpl implements DocumentService {
     ) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
@@ -115,6 +120,8 @@ public class DocumentServiceImpl implements DocumentService {
     ) {
         UUID userId = getAuthenticatedUserId();
         assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
+        fileValidationService.validate(file);
 
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
@@ -164,14 +171,16 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public DocumentResponse getById(
             UUID workspaceId,
             UUID departmentId,
             UUID projectId,
             UUID documentId
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Document document = documentRepository.findByIdAndWorkspace(documentId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found."));
@@ -202,7 +211,9 @@ public class DocumentServiceImpl implements DocumentService {
             UUID projectId,
             Pageable pageable
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Project project = projectRepository.findByIdAndDepartment_Id(projectId, departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
@@ -221,8 +232,14 @@ public class DocumentServiceImpl implements DocumentService {
             UUID workspaceId,
             Pageable pageable
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
-        return documentRepository.findByWorkspacePaginated(workspaceId, pageable)
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        UUID accessibleDepartmentId = departmentScopeGuard.resolveAccessibleDepartmentId(workspaceId, userId);
+        if (accessibleDepartmentId == null) {
+            return documentRepository.findByWorkspacePaginated(workspaceId, pageable)
+                    .map(documentMapper::toResponse);
+        }
+        return documentRepository.findByDepartmentIdPaginated(accessibleDepartmentId, pageable)
                 .map(documentMapper::toResponse);
     }
 
@@ -235,14 +252,23 @@ public class DocumentServiceImpl implements DocumentService {
             String query,
             Pageable pageable
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
 
         if (projectId != null) {
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
+            departmentScopeGuard.assertDepartmentAccessible(workspaceId, project.getDepartment().getId(), userId);
             return documentRepository.searchByTitleInProjectPaginated(projectId, query, pageable)
                     .map(documentMapper::toResponse);
         }
 
-        return documentRepository.searchByTitleInWorkspacePaginated(workspaceId, query, pageable)
+        UUID accessibleDepartmentId = departmentScopeGuard.resolveAccessibleDepartmentId(workspaceId, userId);
+        if (accessibleDepartmentId == null) {
+            return documentRepository.searchByTitleInWorkspacePaginated(workspaceId, query, pageable)
+                    .map(documentMapper::toResponse);
+        }
+        return documentRepository.searchByTitleInDepartmentPaginated(accessibleDepartmentId, query, pageable)
                 .map(documentMapper::toResponse);
     }
 
@@ -254,7 +280,9 @@ public class DocumentServiceImpl implements DocumentService {
             UUID projectId,
             UUID documentId
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
 
         Document document = documentRepository.findByIdAndWorkspace(documentId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found."));
@@ -509,7 +537,9 @@ public class DocumentServiceImpl implements DocumentService {
             UUID projectId,
             UUID documentId
     ) {
-        assertActiveWorkspaceMember(workspaceId, getAuthenticatedUserId());
+        UUID userId = getAuthenticatedUserId();
+        assertActiveWorkspaceMember(workspaceId, userId);
+        departmentScopeGuard.assertDepartmentAccessible(workspaceId, departmentId, userId);
         Document document = documentRepository.findByIdAndWorkspace(documentId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found."));
 

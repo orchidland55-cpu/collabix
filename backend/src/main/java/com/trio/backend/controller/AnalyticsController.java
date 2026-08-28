@@ -36,7 +36,7 @@ public class AnalyticsController {
     private final AdminDashboardAnalyticsService adminDashboardAnalyticsService;
 
     @GetMapping
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "Analytique Complete of the workspace",
             security = @SecurityRequirement(name = "bearer"),
@@ -52,7 +52,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/tasks")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "MÃ©sortques of tasks",
             security = @SecurityRequirement(name = "bearer")
@@ -67,7 +67,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/activities")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "MÃ©sortques des activitys",
             security = @SecurityRequirement(name = "bearer")
@@ -82,7 +82,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/documents")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "MÃ©sortques des documents",
             security = @SecurityRequirement(name = "bearer")
@@ -97,7 +97,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/notifications")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "MÃ©sortques of notifications",
             security = @SecurityRequirement(name = "bearer")
@@ -112,7 +112,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/charts")
-    @PreAuthorize("@workspaceAuth.canViewWorkspace(#workspaceId, authentication) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
+    @PreAuthorize("(@workspaceAuth.canUpdateWorkspace(#workspaceId, authentication) || hasAnyAuthority('ROLE_MANAGER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN')) && @permissionEvaluator.hasPermission(authentication, 'ANALYTICS_VIEW')")
     @Operation(
             summary = "Data pour les graphicals",
             security = @SecurityRequirement(name = "bearer")

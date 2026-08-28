@@ -303,6 +303,24 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     );
 
     /**
+     * Search active documents by title within a specific department.
+     * Case-insensitive partial matching. Used to scope workspace-wide
+     * document searches to the caller's own department.
+     */
+    @Query("""
+            SELECT d FROM Document d
+            WHERE d.project.department.id = :departmentId
+            AND LOWER(d.title) LIKE LOWER(CONCAT('%', :searchTerm, '%'))
+            AND d.status = 'ACTIVE'
+            ORDER BY d.createdAt DESC
+            """)
+    Page<Document> searchByTitleInDepartmentPaginated(
+            @Param("departmentId") UUID departmentId,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable
+    );
+
+    /**
      * Find all active documents for a specific department with the owning
      * project eagerly fetched (avoids N+1 on {@code d.project}).
      */

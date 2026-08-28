@@ -56,22 +56,28 @@ public class FileValidationService {
         }
 
         String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase())) {
-            log.warn("Blocked file upload with disallowed MIME type: {}", contentType);
-            throw new BadRequestException("File type is not allowed.");
-        }
+        boolean mimeAllowed = contentType != null && ALLOWED_MIME_TYPES.contains(contentType.toLowerCase());
 
         String originalFilename = file.getOriginalFilename();
+        String extension = "";
         if (originalFilename != null) {
-            String extension = "";
             int dotIndex = originalFilename.lastIndexOf('.');
             if (dotIndex > 0) {
                 extension = originalFilename.substring(dotIndex + 1).toLowerCase();
             }
-            if (!extension.isEmpty() && !ALLOWED_EXTENSIONS.contains(extension)) {
-                log.warn("Blocked file upload with disallowed extension: {}", extension);
-                throw new BadRequestException("File extension is not allowed.");
+        }
+        boolean extensionAllowed = !extension.isEmpty() && ALLOWED_EXTENSIONS.contains(extension);
+
+        // Accept the file if either its detected MIME type or its extension is on the
+        // allow-list. This prevents valid files (e.g. .docx reported as
+        // application/octet-stream by some clients) from being rejected.
+        if (!mimeAllowed && !extensionAllowed) {
+            if (contentType == null) {
+                log.warn("Blocked file upload: missing content type and extension {} not allowed", extension);
+            } else {
+                log.warn("Blocked file upload with disallowed type: mime={}, extension={}", contentType, extension);
             }
+            throw new BadRequestException("File type is not allowed.");
         }
     }
 

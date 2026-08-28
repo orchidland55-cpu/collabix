@@ -127,7 +127,10 @@ public class AIScopeAuthorization {
         }
 
         UUID primaryDepartmentId = requirePrimaryDepartmentId(userId);
-        if (departmentId != null && !primaryDepartmentId.equals(departmentId)) {
+        if (departmentId == null) {
+            departmentId = primaryDepartmentId;
+        }
+        if (!primaryDepartmentId.equals(departmentId)) {
             throw new ForbiddenException("You do not have permission to access knowledge in this department.");
         }
         if (projectId != null) {

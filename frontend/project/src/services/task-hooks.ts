@@ -70,6 +70,22 @@ export function useTasksList(
   });
 }
 
+/**
+ * Flat, department-scoped task list for a single project. Used by the Project
+ * Details page to render statistics and the tasks table. Membership/department
+ * scoping is enforced by the backend (TASK_READ + canViewDepartment).
+ */
+export function useProjectTasks(wsId: string | undefined, deptId: string | undefined, projId: string, size = 500) {
+  return useQuery<Task[]>({
+    queryKey: ['project-tasks', wsId, deptId, projId, size],
+    queryFn: async () => {
+      const page = await taskService.list(wsId!, deptId!, projId, { size, page: 0 });
+      return (page.content ?? []).map(mapTaskResponse);
+    },
+    enabled: !!wsId && !!deptId && !!projId,
+  });
+}
+
 export function useDepartmentTasksList(
   wsId: string,
   deptId: string,
@@ -160,14 +176,14 @@ export function useTaskDetail(wsId: string, deptId: string, projId: string, task
   });
 }
 
-export function useCreateTask(wsId: string, deptId: string) {
+export function useCreateTask(wsId: string | undefined, deptId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ projectId, data }: { projectId: string; data: CreateTaskRequest }) =>
-      taskService.create(wsId, deptId, projectId, data),
+      taskService.create(wsId!, deptId!, projectId, data),
     onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: taskKeys.list(wsId, deptId, variables.projectId) });
-      qc.invalidateQueries({ queryKey: ['tasks', 'department-list', wsId, deptId] });
+      qc.invalidateQueries({ queryKey: taskKeys.list(wsId!, deptId!, variables.projectId) });
+      qc.invalidateQueries({ queryKey: ['tasks', 'department-list', wsId!, deptId!] });
     },
   });
 }

@@ -41,6 +41,11 @@ public class CandidateAttachment extends AuditableEntity {
 
     @NotBlank
     @Size(max = 255)
+    @Column(name = "file_name", nullable = false, length = 255)
+    private String fileName;
+
+    @NotBlank
+    @Size(max = 255)
     @Column(name = "original_file_name", nullable = false, length = 255)
     private String originalFileName;
 
